@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Clear cached balances on network switch (#449)
+
+- Issue #449: Clear cached balances in `TrustFlowClient.switchNetwork` so cached entries do not leak across networks.
+
 ### MultiSigConfig integration (#442)
 
 - Issue #442: Established `InitMultiSigParams extends MultiSigConfig`, added `MultiSigEscrowClient.getConfig` to expose operation configuration, and added integration tests.
