@@ -164,4 +164,38 @@ describe('IPFSStorage.upload', () => {
       expect(result.error).toMatch(/Network error/);
     }
   });
+
+  it('normalizes custom gatewayUrl without /ipfs so upload() matches resolve() URL construction (#504)', async () => {
+    const axios = jest.requireActual('axios');
+    const getSpy = jest.spyOn(axios, 'get').mockResolvedValue({
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+      data: '{"ok":true}',
+    });
+    const validCid = 'QmYwAPJzv5CZsnA625s3Xf2nemtYgPpHdWEz79ojWnPbdG';
+
+    try {
+      for (const [gatewayUrl, expectedPrefix] of [
+        ['https://my-gateway.example', 'https://my-gateway.example/ipfs'],
+        ['https://my-gateway.example/', 'https://my-gateway.example/ipfs'],
+        ['https://my-gateway.example/ipfs/', 'https://my-gateway.example/ipfs'],
+        ['https://my-gateway.example/ipfs-proxy', 'https://my-gateway.example/ipfs-proxy/ipfs'],
+      ] as const) {
+        getSpy.mockClear();
+        mockHttpPost.mockResolvedValueOnce({ data: { cid: validCid } });
+
+        const storage = new IPFSStorage({ gatewayUrl });
+        const uploadResult = await storage.upload(Buffer.from('payload'));
+        await storage.resolve(validCid);
+
+        expect(uploadResult.ok).toBe(true);
+        if (uploadResult.ok) {
+          expect(uploadResult.data.url).toBe(`${expectedPrefix}/${validCid}`);
+          expect(getSpy).toHaveBeenCalledWith(uploadResult.data.url, expect.any(Object));
+        }
+      }
+    } finally {
+      getSpy.mockRestore();
+    }
+  });
 });

@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Consistent IPFS gateway URL normalization in `IPFSStorage.upload` (#504)
+
+- Issue #504: Factored gateway URL normalization out of `IPFSStorage.resolve` into a shared helper used by both `upload()` and `resolve()` so custom gateways without an `/ipfs` suffix return consistent gateway URLs.
+
 ### MultiSigConfig integration (#442)
 
 - Issue #442: Established `InitMultiSigParams extends MultiSigConfig`, added `MultiSigEscrowClient.getConfig` to expose operation configuration, and added integration tests.
