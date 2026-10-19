@@ -215,11 +215,13 @@ describe('contract module', () => {
       );
     });
 
-    it('handles zero, missing, or invalid multiplier inputs gracefully in padResourceFee (#438)', async () => {
+    it('handles zero, missing, invalid multiplier, and >MAX_SAFE_INTEGER inputs in padResourceFee (#438)', async () => {
       const { padResourceFee, DEFAULT_RESOURCE_FEE_MULTIPLIER } =
-        await import('../src/tx-pipeline/pipeline');
+        await import('../src/tx-pipeline');
       expect(DEFAULT_RESOURCE_FEE_MULTIPLIER).toBe(1.1);
       expect(padResourceFee('0')).toBe('0');
+      expect(padResourceFee(0n)).toBe('0');
+      expect(padResourceFee(-10n)).toBe('0');
       expect(padResourceFee('')).toBe('0');
       expect(padResourceFee('-500')).toBe('0');
       expect(padResourceFee('not-a-number')).toBe('0');
@@ -227,6 +229,11 @@ describe('contract module', () => {
       expect(padResourceFee('1000', -2)).toBe('1100');
       expect(padResourceFee('1000', Number.NaN)).toBe('1100');
       expect(padResourceFee('1000', 1)).toBe('1000');
+
+      // 64-bit stroop integers above Number.MAX_SAFE_INTEGER (2^53 + 1 = 9007199254740993)
+      expect(padResourceFee('9007199254740993', 1)).toBe('9007199254740993');
+      expect(padResourceFee(9007199254740993n, 1)).toBe('9007199254740993');
+      expect(padResourceFee('9007199254740993', 1.1)).toBe('9907919180215093');
     });
   });
 
