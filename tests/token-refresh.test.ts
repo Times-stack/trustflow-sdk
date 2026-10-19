@@ -83,6 +83,38 @@ describe('decodeJwtExpMs', () => {
   it('returns null for unparseable payload', () => {
     expect(decodeJwtExpMs('a.!!!.c')).toBeNull();
   });
+
+  it('falls back to atob when global Buffer is unavailable', () => {
+    const expSeconds = 1999999999;
+    const token = fakeJwt(expSeconds);
+    const originalBuffer = globalThis.Buffer;
+    const atobSpy = jest.spyOn(globalThis, 'atob');
+
+    try {
+      delete (globalThis as { Buffer?: unknown }).Buffer;
+      expect(decodeJwtExpMs(token)).toBe(expSeconds * 1000);
+      expect(atobSpy).toHaveBeenCalledTimes(1);
+    } finally {
+      globalThis.Buffer = originalBuffer;
+      atobSpy.mockRestore();
+    }
+  });
+
+  it('returns null when neither Buffer nor atob is available', () => {
+    const expSeconds = 1999999999;
+    const token = fakeJwt(expSeconds);
+    const originalBuffer = globalThis.Buffer;
+    const originalAtob = globalThis.atob;
+
+    try {
+      delete (globalThis as { Buffer?: unknown }).Buffer;
+      delete (globalThis as { atob?: unknown }).atob;
+      expect(decodeJwtExpMs(token)).toBeNull();
+    } finally {
+      globalThis.Buffer = originalBuffer;
+      globalThis.atob = originalAtob;
+    }
+  });
 });
 
 describe('TokenRefreshManager', () => {
