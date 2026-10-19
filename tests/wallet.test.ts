@@ -1,6 +1,11 @@
-import { connectWallet, disconnectWallet } from '../src/wallet/connect';
-import { getFreighter, isFreighterInstalled } from '../src/wallet/freighter';
-import { getAlbedo } from '../src/wallet/albedo';
+import { connectWallet, disconnectWallet, createWalletAdapter } from '../src/wallet/connect';
+import {
+  getFreighter,
+  isFreighterInstalled,
+  FreighterWalletAdapter,
+} from '../src/wallet/freighter';
+import { getAlbedo, AlbedoWalletAdapter } from '../src/wallet/albedo';
+import type { WalletAdapter } from '../src/wallet/types';
 import { TrustFlowError } from '../src/errors';
 
 describe('wallet module', () => {
@@ -85,14 +90,14 @@ describe('wallet module', () => {
 
     it('throws UNAUTHORIZED if freighter is not installed', async () => {
       await expect(connectWallet('freighter')).rejects.toMatchObject(
-        new TrustFlowError('Freighter not installed', 'UNAUTHORIZED')
+        new TrustFlowError('Freighter not installed', 'UNAUTHORIZED'),
       );
     });
 
     it('throws UNAUTHORIZED if wallet type is unsupported', async () => {
       // @ts-expect-error Testing invalid wallet type
       await expect(connectWallet('unsupported')).rejects.toMatchObject(
-        new TrustFlowError('Wallet type unsupported not supported', 'UNAUTHORIZED')
+        new TrustFlowError('Wallet type unsupported not supported', 'UNAUTHORIZED'),
       );
     });
 
@@ -115,6 +120,95 @@ describe('wallet module', () => {
   describe('disconnectWallet', () => {
     it('is a no-op that resolves successfully', async () => {
       await expect(disconnectWallet()).resolves.toBeUndefined();
+    });
+  });
+
+  describe('WalletAdapter implementations (#435)', () => {
+    it('FreighterWalletAdapter satisfies WalletAdapter and connects/signs/disconnects', async () => {
+      const adapter: WalletAdapter = createWalletAdapter('freighter');
+      expect(adapter).toBeInstanceOf(FreighterWalletAdapter);
+      expect(adapter.type).toBe('freighter');
+      expect(await adapter.isAvailable()).toBe(false);
+
+      await expect(adapter.sign('XDR', 'TESTNET')).rejects.toMatchObject({
+        code: 'UNAUTHORIZED',
+      });
+      await expect(adapter.signMessage('msg')).rejects.toMatchObject({
+        code: 'UNAUTHORIZED',
+      });
+
+      global.window = {
+        freighter: {
+          getPublicKey: jest.fn().mockResolvedValue('GFREIGHTER...'),
+          getNetwork: jest.fn().mockResolvedValue('PUBLIC'),
+          signTransaction: jest.fn().mockResolvedValue({ signedXDR: 'SIGNED_FREIGHTER_XDR' }),
+          signMessage: jest.fn().mockResolvedValue('SIG_BASE64'),
+        },
+      } as any;
+
+      expect(await adapter.isAvailable()).toBe(true);
+      await expect(adapter.connect()).resolves.toEqual({
+        type: 'freighter',
+        publicKey: 'GFREIGHTER...',
+        network: 'PUBLIC',
+      });
+      await expect(adapter.sign('RAW_XDR', 'PUBLIC')).resolves.toBe('SIGNED_FREIGHTER_XDR');
+      await expect(adapter.signMessage('challenge')).resolves.toBe('SIG_BASE64');
+      await expect(adapter.disconnect()).resolves.toBeUndefined();
+    });
+
+    it('FreighterWalletAdapter maps user rejections to USER_REJECTED TrustFlowError', async () => {
+      global.window = {
+        freighter: {
+          getPublicKey: jest.fn().mockRejectedValue(new Error('User declined access')),
+          getNetwork: jest.fn(),
+          signTransaction: jest.fn().mockRejectedValue(new Error('User rejected request')),
+          signMessage: jest.fn().mockRejectedValue(new Error('User canceled signing')),
+        },
+      } as any;
+
+      const adapter = new FreighterWalletAdapter();
+      await expect(adapter.connect()).rejects.toMatchObject({ code: 'USER_REJECTED' });
+      await expect(adapter.sign('RAW_XDR', 'TESTNET')).rejects.toMatchObject({
+        code: 'USER_REJECTED',
+      });
+      await expect(adapter.signMessage('challenge')).rejects.toMatchObject({
+        code: 'USER_REJECTED',
+      });
+    });
+
+    it('AlbedoWalletAdapter satisfies WalletAdapter and connects/signs/disconnects', async () => {
+      const adapter: WalletAdapter = createWalletAdapter('albedo');
+      expect(adapter).toBeInstanceOf(AlbedoWalletAdapter);
+      expect(adapter.type).toBe('albedo');
+      expect(await adapter.isAvailable()).toBe(false);
+
+      await expect(adapter.connect()).rejects.toMatchObject({ code: 'UNAUTHORIZED' });
+      await expect(adapter.sign('XDR', 'TESTNET')).rejects.toMatchObject({
+        code: 'UNAUTHORIZED',
+      });
+
+      global.window = {
+        albedo: {
+          publicKey: jest.fn().mockResolvedValue({ pubkey: 'GALBEDO...', token: 'tok' }),
+          tx: jest.fn().mockResolvedValue({
+            signed_envelope_xdr: 'SIGNED_ALBEDO_XDR',
+            tx_hash: 'hash',
+          }),
+        },
+      } as any;
+
+      expect(await adapter.isAvailable()).toBe(true);
+      await expect(adapter.connect()).resolves.toEqual({
+        type: 'albedo',
+        publicKey: 'GALBEDO...',
+        network: 'TESTNET',
+      });
+      await expect(adapter.sign('RAW_XDR', 'TESTNET')).resolves.toBe('SIGNED_ALBEDO_XDR');
+      await expect(adapter.signMessage('msg')).rejects.toMatchObject({
+        code: 'SIGNING_ERROR',
+      });
+      await expect(adapter.disconnect()).resolves.toBeUndefined();
     });
   });
 });
