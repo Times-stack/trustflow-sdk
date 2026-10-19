@@ -223,4 +223,32 @@ describe('TrustFlowError (Unified Error Model)', () => {
     expect(new Set(members).size).toBe(members.length);
     expect(members.filter((c) => c === 'INVALID_CONTRACT_CALL')).toHaveLength(1);
   });
+
+  it('fails lint on a duplicate string-literal union member (#432)', () => {
+    const { spawnSync } = require('child_process') as typeof import('child_process');
+    const path = require('path') as typeof import('path');
+    const root = path.resolve(__dirname, '..');
+    const script = `
+      const { ESLint } = require('eslint');
+      (async () => {
+        const eslint = new ESLint({ overrideConfigFile: 'eslint.config.mjs', cwd: process.cwd() });
+        const [res] = await eslint.lintText(
+          "export type DuplicateCode = 'INVALID_CONTRACT_CALL' | 'TIMEOUT' | 'INVALID_CONTRACT_CALL';\\n",
+          { filePath: 'src/errors.ts' },
+        );
+        process.stdout.write(JSON.stringify(res.messages));
+      })();
+    `;
+    const res = spawnSync(process.execPath, ['-e', script], {
+      cwd: root,
+      encoding: 'utf-8',
+    });
+    expect(res.status).toBe(0);
+    const messages = JSON.parse(res.stdout) as Array<{ ruleId: string | null; severity: number }>;
+    expect(
+      messages.some(
+        (m) => m.ruleId === '@typescript-eslint/no-duplicate-type-constituents' && m.severity === 2,
+      ),
+    ).toBe(true);
+  });
 });
