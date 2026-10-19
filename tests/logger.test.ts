@@ -100,6 +100,7 @@ describe('SDKLogger level filtering', () => {
       ],
       tokens: [{ apiKey: 'x' }],
       rawTokens: ['jwt-1', 'jwt-2'],
+      nestedRawTokens: [['jwt-3', 'jwt-4']],
     });
     expect(infoSpy).toHaveBeenCalledTimes(1);
     const context = infoSpy.mock.calls[0][1] as Record<string, unknown>;
@@ -112,6 +113,8 @@ describe('SDKLogger level filtering', () => {
     expect(context['tokens']).toEqual([{ apiKey: '[REDACTED]' }]);
     expect(Array.isArray(context['rawTokens'])).toBe(true);
     expect(context['rawTokens']).toEqual(['[REDACTED]', '[REDACTED]']);
+    expect(Array.isArray(context['nestedRawTokens'])).toBe(true);
+    expect(context['nestedRawTokens']).toEqual([['[REDACTED]', '[REDACTED]']]);
   });
 
   it('preserves top-level array context and redacts sensitive elements', () => {
@@ -121,6 +124,27 @@ describe('SDKLogger level filtering', () => {
     const context = infoSpy.mock.calls[0][1];
     expect(Array.isArray(context)).toBe(true);
     expect(context).toEqual([{ apiKey: '[REDACTED]' }, 'plain-item']);
+  });
+
+  it('handles circular references and shared object references safely', () => {
+    const log = new SDKLogger({ minLevel: 'debug' });
+    const circularArray: unknown[] = ['first'];
+    circularArray.push(circularArray);
+
+    const sharedItem = { apiKey: 'secret-shared', label: 'shared' };
+    log.info('cycles-and-shared', {
+      cycle: circularArray,
+      shared: [sharedItem, sharedItem],
+    });
+
+    expect(infoSpy).toHaveBeenCalledTimes(1);
+    const context = infoSpy.mock.calls[0][1] as Record<string, unknown>;
+    expect(Array.isArray(context['cycle'])).toBe(true);
+    expect(context['cycle']).toEqual(['first', '[Circular]']);
+    expect(context['shared']).toEqual([
+      { apiKey: '[REDACTED]', label: 'shared' },
+      { apiKey: '[REDACTED]', label: 'shared' },
+    ]);
   });
 
   it('emits structured JSON with timestamp/scope/message/context', () => {
