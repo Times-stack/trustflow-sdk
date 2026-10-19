@@ -22,6 +22,7 @@ export * from './profile';
 export * from './storage';
 export * from './auth';
 export * from './stellar';
+export * from './wallet';
 export * from './utils/validation';
 export * from './utils/format';
 export * from './utils/i128';
