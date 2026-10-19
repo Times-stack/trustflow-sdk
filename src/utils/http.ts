@@ -286,6 +286,10 @@ export function createApiHttpClient(options: ApiHttpClientOptions): AxiosInstanc
       for (const [key, value] of Object.entries(rawHeaders)) {
         if (typeof value === 'string') {
           stringHeaders[key] = value;
+        } else if (Array.isArray(value)) {
+          stringHeaders[key] = value.map(String).join(', ');
+        } else if (typeof value === 'number' || typeof value === 'boolean') {
+          stringHeaders[key] = String(value);
         }
       }
       validateHeaderSize(stringHeaders, validationConfig?.maxHeaderSizeBytes);

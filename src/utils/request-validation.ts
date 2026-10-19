@@ -50,6 +50,8 @@ export function validateRequestSize(body: unknown, config?: RequestValidationCon
     sizeBytes = body.byteLength;
   } else if (ArrayBuffer.isView(body)) {
     sizeBytes = body.byteLength;
+  } else if (typeof URLSearchParams !== 'undefined' && body instanceof URLSearchParams) {
+    sizeBytes = new Blob([body.toString()]).size;
   } else {
     if (config?.maxJsonLength !== undefined) {
       let json: string | undefined;
