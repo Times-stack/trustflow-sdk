@@ -78,6 +78,9 @@ jobs:
       - name: Build documentation
         run: npm run docs
 
+      - name: Check API documentation coverage
+        run: npm run check-docs
+
       - name: Check build artifacts
         run: |
           test -f dist/index.js || exit 1

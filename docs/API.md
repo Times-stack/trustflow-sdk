@@ -1049,3 +1049,30 @@ See [docs/TESTING.md](./TESTING.md) for full usage examples.
 - `minAmount` / `maxAmount` — Filter by amount bounds
 - `sortBy` — Sort field (`created_at`, `amount`, `deadline`, `status`)
 - `sortOrder` — Sort direction (`asc`, `desc`)
+
+## Root Barrel Export Reference (`@trustflow/sdk`)
+
+The root `@trustflow/sdk` entry point (`src/index.ts`) re-exports the following public types, constants, schemas, and utilities across its submodules:
+
+- **`./types`**: `BalanceCacheConfig`, `LoggingConfig`, `EscrowStatus`, `CreateEscrowParams`, `ReleaseEscrowParams`, `DisputeEscrowParams`
+- **`./types/index`**: `InvokeContractParams`, `ContractCallResult`, `ParsedEventBase`, `ParsedTrustFlowEvent`, `TrustFlowEvent`, `EventHandler`, `VoteChoice`, `PlaintextVote`, `EncryptedVote`, `VotePayload`, `CastVoteParams`, `CastVoteResult`, `CastVoteSDKResult`, `VoteCommitment`, `RevealVoteResult`, `SubmitRevealParams`, `SubmitRevealResult`, `SubmitRevealSDKResult`, `JurorClientOptions`, `MultiSigOperationType`, `MultiSigOperationStatus`, `MultiSigConfig`, `SignatureEntry`, `MultiSigOperation`, `InitMultiSigParams`, `AddSignatureParams`, `MultiSigStatus`, `MultiSigSubmitResult`, `InitMultiSigResult`, `AddSignatureResult`, `GetStatusResult`, `SubmitMultiSigResult`, `GetXdrResult`, `MultiSigStateStore`, `MULTISIG_SNAPSHOT_VERSION`, `MultiSigStateSnapshot`, `ImportStateResult`, `UpdateProfileParams`, `StellarAddress`, `TxHash`, `EscrowMilestone`, `EscrowParams`, `EscrowState`, `DisputeParams`, `GetGigsParams`, `GigsPage`
+- **`./constants`**: `DEFAULT_NETWORK`, `HORIZON_URLS`, `SOROBAN_RPC_URLS`, `NETWORK_PASSPHRASES`, `ESCROW_MIN_AMOUNT_STROOPS`, `ESCROW_MAX_DURATION_BLOCKS`, `SDK_VERSION`, `DEFAULT_API_VERSION`, `API_VERSION_HEADER`, `SDK_VERSION_HEADER`
+- **`./accounts`**: `AccountManager`, `ACCOUNT_SNAPSHOT_VERSION`, `AccountChangeEvent`, `AccountChangeListener`, `AccountContext`, `AccountManagerSnapshot`, `AccountOptions`, `AccountPatch`, `AccountRole`, `AccountSnapshot`, `AddAccountInput`
+- **`./escrow`**: `GetGigsOptions`, `EscrowMonitorOnReconnect`, `MonitorReconnectInfo`, `EscrowMonitorOnGap`, `MonitorGapInfo`, `ResilientPollingOptions`, `CursorAwareFetchFn`, `cancelEscrow`, `filterUnreleasedMilestones`, `encodeMilestoneIndices`, `MilestoneCancellationInfo`
+- **`./storage`**: `IPFSUploadOptions`, `IPFSUploadResult`, `IPFSResolveOptions`, `isValidCid`, `validateCID`, `getCidVersion`, `assertValidCid`, `CID_V0_REGEX`, `CID_V1_REGEX`
+- **`./auth`**: `AuthChallenge`, `AuthFlowOptions`, `authenticateWithWallet`, `SessionStorageAdapter`, `resetSessionStorage`, `TokenRefreshListener`, `TokenRefreshConfig`, `decodeJwtExpMs`, `TokenRefreshManager`
+- **`./stellar`**: `StellarNetwork`, `StellarNetworkConfig`, `NETWORK_CONFIGS`, `getNetworkConfig`, `AccountInfo`, `PreparedTx`, `SignedTx`, `SubmittedTx`, `HorizonSubmissionErrorDetail`, `AccountMonitorConfig`, `LowBalanceAlert`, `BalanceUpdate`, `AccountMonitorEventHandler`, `AccountBalanceMonitor`
+- **`./utils/validation`**: `STELLAR_ADDRESS_RE`, `CONTRACT_ID_RE`, `CID_V0_RE`, `CID_V1_RE`, `CID_RE`, `isValidStellarAddress`, `isValidContractId`, `isValidAddress`, `isValidXLMAmount`, `assertStellarAddress`, `xlmToStroops`, `isValidEscrowId`, `isValidBase64`, `isValidBlockCount`, `sanitizeString`, `isValidCID`, `isValidCIDv0`, `isValidCIDv1`, `assertValidCID`, `getCIDVersion`
+- **`./utils/format`**: `toBaseUnits`, `fromBaseUnits`, `stroopsToXLM`, `parseAmount`, `formatAmount`, `truncateAddress`, `formatTimestamp`, `formatDateTime`, `formatRelativeTime`, `formatDuration`
+- **`./utils/i128`**: `I128_MIN`, `I128_MAX`, `U128_MIN`, `U128_MAX`, `Int128Like`, `toI128ScVal`, `toU128ScVal`, `fromI128ScVal`, `fromU128ScVal`
+- **`./utils/timezone`**: `TimezoneOptions`, `toUTC`, `timestampToUTC`, `parseISO`, `getNowUTC`, `addMilliseconds`, `addSeconds`, `addMinutes`, `addHours`, `addDays`, `diffMilliseconds`, `diffSeconds`, `isPast`, `isFuture`, `isExpired`, `formatISO`, `FutureExpirationOptions`, `normalizeToUtcSeconds`, `validateFutureExpiration`, `normalizeMilestoneExpiration`
+- **`./utils/request-validation`**: `RequestValidationConfig`, `DEFAULT_MAX_REQUEST_SIZE`, `DEFAULT_MAX_JSON_LENGTH`, `getJsonSizeBytes`, `validateRequestSize`, `isRequestSizeValid`, `formatBytes`, `validateHeaderSize`, `validateQueryParamSize`, `truncateRequestBody`
+- **`./utils/connection-pool`**: `registerPoolAgent`, `unregisterPoolAgent`, `destroyAllPoolAgents`, `trackAndDestroyOnAbort`
+- **`./utils/circuit-breaker`**: `CircuitState`, `CircuitBreakerConfig`, `CircuitBreakerRegistry`, `globalCircuitBreakerRegistry`
+- **`./utils/environment`**: `FeatureSupport`, `EnvironmentReport`, `RuntimeKind`, `REQUIRED_FEATURES`, `OPTIONAL_FEATURES`, `detectRuntime`, `hasWebCrypto`, `detectFeatures`, `assertFeatureSupport`, `assertWebCryptoSupport`
+- **`./utils/transient`**: `TransientFailureKind`, `TransientFailure`, `parseRetryAfterMs`, `readRetryAfterMs`
+- **`./utils/retry`**: `DelayStrategy`, `RetryOptions`, `RetryInfo`, `OnRetryCallback`, `backoffHonouringRetryAfter`
+- **`./utils/interceptors`**: `InterceptorRequestConfig`, `InterceptorResponse`, `InterceptorFulfilled`, `InterceptorRejected`, `InterceptorManager`, `HttpInterceptors`, `attachInterceptors`
+- **`./tx-pipeline`**: `AssembleParams`, `EstimateFeeOptions`, `FeeBumpEvent`, `FeeBumpOptions`, `FeeEstimate`, `FeeRange`, `PipelineSubmission`, `PrepareOptions`, `RunPipelineParams`, `SubmittableTransaction`
+- **`./contract`**: `SpecFunction`, `SpecFunctionInput`, `SpecStruct`, `SpecStructField`, `SpecEnum`, `SpecEnumCase`, `SpecUnion`, `SpecUnionCase`, `generateContractBindings`, `invokeContract`, `SignAndSubmitFn`, `simulateContractCall`, `simulateTransaction`, `SimulationOutcome`, `buildCancelArgs`, `buildReleaseArgs`, `buildClaimArgs`, `buildVoteArgs`, `buildRevealArgs`, `SimulationResult`, `SimulateContractCallOptions`
+- **`./index`**: `GetBalanceOptions`, `CidSchema`, `parseRpcResponse`
