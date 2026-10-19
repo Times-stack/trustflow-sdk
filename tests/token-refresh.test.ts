@@ -100,6 +100,30 @@ describe('decodeJwtExpMs', () => {
     }
   });
 
+  it('decodes RFC 7519 base64url payloads (-, _, unpadded) via atob when Buffer is unavailable', () => {
+    const expSeconds = 1999999999;
+    const header = Buffer.from(JSON.stringify({ alg: 'HS256', typ: 'JWT' })).toString('base64url');
+    // 'user?>>>' and 'a/b+c?' produce '-' and '_' in base64url with stripped '=' padding
+    const payload = Buffer.from(
+      JSON.stringify({ sub: 'user?>>>', scope: 'a/b+c?', exp: expSeconds }),
+    ).toString('base64url');
+    expect(payload).toMatch(/[-_]/);
+    expect(payload.endsWith('=')).toBe(false);
+    const token = `${header}.${payload}.sig`;
+
+    const originalBuffer = globalThis.Buffer;
+    const atobSpy = jest.spyOn(globalThis, 'atob');
+
+    try {
+      delete (globalThis as { Buffer?: unknown }).Buffer;
+      expect(decodeJwtExpMs(token)).toBe(expSeconds * 1000);
+      expect(atobSpy).toHaveBeenCalledTimes(1);
+    } finally {
+      globalThis.Buffer = originalBuffer;
+      atobSpy.mockRestore();
+    }
+  });
+
   it('returns null when neither Buffer nor atob is available', () => {
     const expSeconds = 1999999999;
     const token = fakeJwt(expSeconds);
