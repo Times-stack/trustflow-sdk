@@ -267,7 +267,7 @@ export function normalizeMilestoneExpiration<
     deadline?: Date | number | string;
     expiration?: Date | number | string;
   },
-  TInput extends Date | number | string | T[] = Date | number | string | T[],
+  TInput extends Date | number | string | T[] = T[],
 >(
   input: TInput,
   referenceDate?: Date,
