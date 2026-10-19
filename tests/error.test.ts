@@ -211,4 +211,16 @@ describe('TrustFlowError (Unified Error Model)', () => {
       expect(err2.message).toContain('No account context is active');
     });
   });
+
+  it('lists each error code in TrustFlowErrorCode union exactly once (#432)', () => {
+    const fs = require('fs') as typeof import('fs');
+    const path = require('path') as typeof import('path');
+    const errorsSource = fs.readFileSync(path.join(__dirname, '../src/errors.ts'), 'utf-8');
+    const unionMatch = errorsSource.match(/export type TrustFlowErrorCode\s*=\s*([\s\S]*?);/);
+    expect(unionMatch).not.toBeNull();
+    const members = Array.from(unionMatch![1].matchAll(/'([^']+)'/g), (m) => m[1]);
+    expect(members.length).toBeGreaterThan(0);
+    expect(new Set(members).size).toBe(members.length);
+    expect(members.filter((c) => c === 'INVALID_CONTRACT_CALL')).toHaveLength(1);
+  });
 });

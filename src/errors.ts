@@ -24,7 +24,6 @@ export type TrustFlowErrorCode =
   | 'NETWORK_ERROR'
   | 'AUTH_ERROR'
   | 'TIMEOUT'
-  | 'INVALID_CONTRACT_CALL'
   | 'CIRCUIT_BREAKER_OPEN'
   | 'ACCOUNT_NOT_FOUND'
   | 'UNSUPPORTED_ENVIRONMENT'
@@ -116,10 +115,7 @@ export class TrustFlowError extends Error {
   }
 
   static duplicateSigner(address: string): TrustFlowError {
-    return new TrustFlowError(
-      `${address} has already signed this operation`,
-      'DUPLICATE_SIGNER',
-    );
+    return new TrustFlowError(`${address} has already signed this operation`, 'DUPLICATE_SIGNER');
   }
 
   static multiSigInvalidSigner(address: string): TrustFlowError {

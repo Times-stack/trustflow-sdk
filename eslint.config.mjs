@@ -1,4 +1,4 @@
-﻿import eslint from '@eslint/js';
+import eslint from '@eslint/js';
 import tsPlugin from '@typescript-eslint/eslint-plugin';
 import tsParser from '@typescript-eslint/parser';
 import globals from 'globals';
@@ -9,6 +9,9 @@ export default [
     files: ['src/**/*.ts'],
     languageOptions: {
       parser: tsParser,
+      parserOptions: {
+        project: './tsconfig.json',
+      },
       // The SDK supports both browser wallet integrations and Node consumers.
       globals: {
         ...globals.browser,
@@ -23,9 +26,10 @@ export default [
       // Ported rules from legacy .eslintrc.json configuration mapping
       'no-throw-literal': 'error',
       'no-param-reassign': 'warn',
+      '@typescript-eslint/no-duplicate-type-constituents': 'error',
       // These type-focused checks remain available in `npm run lint:strict`.
       '@typescript-eslint/no-explicit-any': 'off',
       '@typescript-eslint/no-unused-vars': 'off',
-    }
-  }
+    },
+  },
 ];
