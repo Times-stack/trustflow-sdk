@@ -1,6 +1,18 @@
 const TOKEN_KEY = 'trustflow_token';
 const ADDRESS_KEY = 'trustflow_address';
 const EXPIRES_AT_KEY = 'trustflow_expires_at';
+const REFRESH_TOKEN_KEY = 'trustflow_refresh_token';
+const NONCE_KEY = 'trustflow_nonce';
+
+const SESSION_BASE_KEYS = [
+  TOKEN_KEY,
+  ADDRESS_KEY,
+  EXPIRES_AT_KEY,
+  REFRESH_TOKEN_KEY,
+  NONCE_KEY,
+] as const;
+
+const trackedScopes = new Set<string>();
 
 /** Default client-side token lifetime, used only when the backend doesn't supply one. */
 const DEFAULT_SESSION_TTL_MS = 15 * 60_000;
@@ -84,6 +96,7 @@ export function configureSessionStorage(adapter: SessionStorageAdapter): void {
 export function resetSessionStorage(): void {
   override = undefined;
   inMemoryFallback = undefined;
+  trackedScopes.clear();
 }
 
 export interface Session {
@@ -124,6 +137,9 @@ export function saveSession(
   expiresAt?: number,
   scope?: string,
 ): void {
+  if (scope) {
+    trackedScopes.add(scope);
+  }
   const storage = getStorage();
   storage.set(scopedKey(TOKEN_KEY, scope), token);
   storage.set(scopedKey(ADDRESS_KEY, scope), address);
@@ -158,9 +174,18 @@ export function loadSession(scope?: string): Session | null {
 /** Clears the session for `scope`, or the unscoped single-account session. */
 export function clearSession(scope?: string): void {
   const storage = getStorage();
-  storage.remove(scopedKey(TOKEN_KEY, scope));
-  storage.remove(scopedKey(ADDRESS_KEY, scope));
-  storage.remove(scopedKey(EXPIRES_AT_KEY, scope));
+  for (const baseKey of SESSION_BASE_KEYS) {
+    storage.remove(scopedKey(baseKey, scope));
+  }
+  if (typeof sessionStorage !== 'undefined' && typeof sessionStorage.removeItem === 'function') {
+    try {
+      for (const baseKey of SESSION_BASE_KEYS) {
+        sessionStorage.removeItem(scopedKey(baseKey, scope));
+      }
+    } catch {
+      // Ignore storage access errors in restricted environments
+    }
+  }
 }
 
 /** True when the stored session is missing or past its `expiresAt`. */
@@ -170,3 +195,62 @@ export function isSessionExpired(session: Session | null = loadSession()): boole
   }
   return Date.now() >= session.expiresAt;
 }
+
+/**
+ * Facade for managing and purging cached authentication sessions, access tokens,
+ * refresh tokens, and challenge nonces across storage backends.
+ */
+export const SessionManager = {
+  save: saveSession,
+  load: loadSession,
+  isExpired: isSessionExpired,
+  /**
+   * Purges cached auth sessions, access/refresh tokens, and challenge nonces
+   * from the configured storage adapter, `localStorage`, and `sessionStorage`.
+   */
+  clear(scope?: string): void {
+    clearSession();
+    if (scope) {
+      clearSession(scope);
+      trackedScopes.delete(scope);
+    }
+    for (const s of trackedScopes) {
+      clearSession(s);
+    }
+    trackedScopes.clear();
+
+    const webStorages = [
+      typeof localStorage !== 'undefined' ? localStorage : undefined,
+      typeof sessionStorage !== 'undefined' ? sessionStorage : undefined,
+    ];
+    for (const webStorage of webStorages) {
+      if (!webStorage) continue;
+      try {
+        if (typeof webStorage.length === 'number' && typeof webStorage.key === 'function') {
+          const keysToRemove: string[] = [];
+          for (let i = 0; i < webStorage.length; i++) {
+            const k = webStorage.key(i);
+            if (
+              k &&
+              SESSION_BASE_KEYS.some((baseKey) => k === baseKey || k.startsWith(`${baseKey}:`))
+            ) {
+              keysToRemove.push(k);
+            }
+          }
+          for (const k of keysToRemove) {
+            webStorage.removeItem(k);
+          }
+        } else if (typeof webStorage.removeItem === 'function') {
+          for (const baseKey of SESSION_BASE_KEYS) {
+            webStorage.removeItem(baseKey);
+            if (scope) {
+              webStorage.removeItem(scopedKey(baseKey, scope));
+            }
+          }
+        }
+      } catch {
+        // Ignore storage access errors in restricted environments
+      }
+    }
+  },
+};
