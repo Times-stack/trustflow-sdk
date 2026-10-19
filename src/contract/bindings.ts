@@ -159,27 +159,19 @@ export class SorobanContractClient extends AbstractContractClient {
    * @returns Promise resolving to ResourceFootprintEstimate
    */
   override async estimateResourceFootprint(
-    methodName: string,
-    args: Record<string, unknown> | unknown[] = [],
+    methodNameOrXdr: string,
+    args?: Record<string, unknown> | unknown[],
   ): Promise<ResourceFootprintEstimate> {
-    const scVals = this.encodeArgs(methodName, args);
-    const contract = new Contract(this.contractId);
-    const operation = contract.call(methodName, ...(scVals as any[]));
-
-    const dummyAccount = new Account(
-      'GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF',
-      '0',
-    );
-
-    const tx = new TransactionBuilder(dummyAccount, {
-      fee: BASE_FEE,
-      networkPassphrase: this.client.getNetworkPassphrase(),
-    })
-      .addOperation(operation)
-      .setTimeout(30)
-      .build();
-
-    return estimateResourceFootprint(this.client, tx.toXDR(), { baseFeeStroops: BASE_FEE });
+    if (
+      args === undefined &&
+      !this.spec.functions.has(methodNameOrXdr) &&
+      this.spec.functions.size === 0
+    ) {
+      return estimateResourceFootprint(this.client, methodNameOrXdr, {
+        baseFeeStroops: BASE_FEE,
+      });
+    }
+    return super.estimateResourceFootprint(methodNameOrXdr, args ?? []);
   }
 }
 

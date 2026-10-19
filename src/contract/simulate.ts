@@ -102,10 +102,11 @@ export function parseResourceFootprint(
   const baseFeeBig = parseNonNegativeBigInt(baseFeeStroops);
   const totalFeeBig = baseFeeBig + resourceFeeBig;
 
+  const maxSafeBig = BigInt(Number.MAX_SAFE_INTEGER);
   const cpuInsns = cpuBig.toString();
-  const cpuInstructions = Number(cpuBig);
+  const cpuInstructions = cpuBig > maxSafeBig ? Number.MAX_SAFE_INTEGER : Number(cpuBig);
   const memBytes = memBig.toString();
-  const ramBytes = Number(memBig);
+  const ramBytes = memBig > maxSafeBig ? Number.MAX_SAFE_INTEGER : Number(memBig);
 
   return {
     cpuInsns,

@@ -140,5 +140,18 @@ describe('Resource Footprint Estimation Helper (#372)', () => {
         code: 'SIMULATION_ERROR',
       });
     });
+
+    it('clamps numeric fields at MAX_SAFE_INTEGER while keeping string and bigint fee fields exact', () => {
+      const hugeCpu = (BigInt(Number.MAX_SAFE_INTEGER) + 999n).toString();
+      const estimate = parseResourceFootprint({
+        cost: { cpuInsns: hugeCpu, memBytes: '0' },
+        minResourceFee: '500',
+      });
+
+      expect(estimate.cpuInsns).toBe(hugeCpu);
+      expect(estimate.cpuInstructions).toBe(Number.MAX_SAFE_INTEGER);
+      expect(estimate.feeStroops).toBe('600');
+      expect(estimate.feeXLM).toBe('0.00006');
+    });
   });
 });
