@@ -5,6 +5,22 @@ import { getAlbedo } from './albedo';
 import { TrustFlowError } from '../errors';
 
 /**
+ * Normalizes wallet-reported network identifiers to the SDK's canonical naming.
+ * Wallets such as Freighter and Albedo report the public network as `'PUBLIC'`,
+ * `'public'`, or `'pubnet'`, whereas the SDK uses `'MAINNET'`.
+ */
+export function normalizeWalletNetwork(network?: string | null): string {
+  if (!network || typeof network !== 'string') {
+    return 'TESTNET';
+  }
+  const upper = network.trim().toUpperCase();
+  if (!upper) {
+    return 'TESTNET';
+  }
+  return upper === 'PUBLIC' || upper === 'PUBNET' ? 'MAINNET' : upper;
+}
+
+/**
  * Attempts to establish a connection with the specified Stellar wallet.
  * If the user rejects the connection dialog, a retryable TrustFlowError with
  * code 'USER_REJECTED' is thrown, leaving the connection state clean for subsequent attempts.
@@ -21,7 +37,7 @@ export async function connectWallet(type: WalletType = 'freighter'): Promise<Wal
         throw TrustFlowError.userRejected('User rejected Freighter connection');
       }
       const network = await freighter.getNetwork();
-      return { type: 'freighter', publicKey, network: network || 'TESTNET' };
+      return { type: 'freighter', publicKey, network: normalizeWalletNetwork(network) };
     } catch (e: unknown) {
       if (isWalletRejection(e)) {
         throw TrustFlowError.userRejected(
@@ -44,7 +60,14 @@ export async function connectWallet(type: WalletType = 'freighter'): Promise<Wal
       if (!res?.pubkey) {
         throw TrustFlowError.userRejected('User rejected Albedo connection');
       }
-      return { type: 'albedo', publicKey: res.pubkey, network: 'TESTNET' };
+      const rawNetwork =
+        res.network ??
+        (typeof albedo.getNetwork === 'function' ? await albedo.getNetwork() : undefined);
+      return {
+        type: 'albedo',
+        publicKey: res.pubkey,
+        network: normalizeWalletNetwork(rawNetwork),
+      };
     } catch (e: unknown) {
       if (isWalletRejection(e)) {
         throw TrustFlowError.userRejected(

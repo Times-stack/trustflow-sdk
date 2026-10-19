@@ -1,9 +1,14 @@
 export interface AlbedoWallet {
-  publicKey(params?: { token?: string }): Promise<{ pubkey: string; token: string }>;
+  publicKey(params?: { token?: string; network?: string }): Promise<{
+    pubkey: string;
+    token: string;
+    network?: string;
+  }>;
   tx(params: {
     xdr: string;
     network?: string;
-  }): Promise<{ signed_envelope_xdr: string; tx_hash: string }>;
+  }): Promise<{ signed_envelope_xdr: string; tx_hash: string; network?: string }>;
+  getNetwork?(): Promise<string> | string;
 }
 
 interface AlbedoWindow {

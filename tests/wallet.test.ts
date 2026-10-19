@@ -1,4 +1,4 @@
-import { connectWallet, disconnectWallet } from '../src/wallet/connect';
+import { connectWallet, disconnectWallet, normalizeWalletNetwork } from '../src/wallet/connect';
 import { getFreighter, isFreighterInstalled } from '../src/wallet/freighter';
 import { getAlbedo } from '../src/wallet/albedo';
 import { TrustFlowError } from '../src/errors';
@@ -78,6 +78,22 @@ describe('wallet module', () => {
     });
   });
 
+  describe('normalizeWalletNetwork', () => {
+    it.each([
+      ['public', 'MAINNET'],
+      ['PUBLIC', 'MAINNET'],
+      ['pubnet', 'MAINNET'],
+      ['PUBNET', 'MAINNET'],
+      ['mainnet', 'MAINNET'],
+      ['testnet', 'TESTNET'],
+      ['futurenet', 'FUTURENET'],
+      ['', 'TESTNET'],
+      [undefined, 'TESTNET'],
+    ])('normalizes %p to %p', (input, expected) => {
+      expect(normalizeWalletNetwork(input)).toBe(expected);
+    });
+  });
+
   describe('connectWallet', () => {
     beforeEach(() => {
       global.window = undefined as any;
@@ -86,6 +102,12 @@ describe('wallet module', () => {
     it('throws UNAUTHORIZED if freighter is not installed', async () => {
       await expect(connectWallet('freighter')).rejects.toMatchObject(
         new TrustFlowError('Freighter not installed', 'UNAUTHORIZED')
+      );
+    });
+
+    it('throws UNAUTHORIZED if albedo is not available', async () => {
+      await expect(connectWallet('albedo')).rejects.toMatchObject(
+        new TrustFlowError('Albedo not available', 'UNAUTHORIZED')
       );
     });
 
@@ -108,6 +130,80 @@ describe('wallet module', () => {
         type: 'freighter',
         publicKey: 'GBM...',
         network: 'TESTNET',
+      });
+    });
+
+    it('normalizes PUBLIC from freighter to MAINNET', async () => {
+      const mockFreighter = {
+        getPublicKey: jest.fn().mockResolvedValue('GBM...'),
+        getNetwork: jest.fn().mockResolvedValue('PUBLIC'),
+      };
+      global.window = { freighter: mockFreighter } as any;
+
+      const connection = await connectWallet('freighter');
+      expect(connection).toEqual({
+        type: 'freighter',
+        publicKey: 'GBM...',
+        network: 'MAINNET',
+      });
+    });
+
+    it('connects to albedo on a non-testnet network reported in publicKey response', async () => {
+      const mockAlbedo = {
+        publicKey: jest.fn().mockResolvedValue({
+          pubkey: 'GBALBEDO123',
+          token: 'tok',
+          network: 'public',
+        }),
+      };
+      global.window = { albedo: mockAlbedo } as any;
+
+      const connection = await connectWallet('albedo');
+      expect(connection).toEqual({
+        type: 'albedo',
+        publicKey: 'GBALBEDO123',
+        network: 'MAINNET',
+      });
+    });
+
+    it('connects to albedo and normalizes pubnet/futurenet from getNetwork()', async () => {
+      const mockAlbedo = {
+        publicKey: jest.fn().mockResolvedValue({ pubkey: 'GBALBEDO456', token: 'tok' }),
+        getNetwork: jest.fn().mockResolvedValue('pubnet'),
+      };
+      global.window = { albedo: mockAlbedo } as any;
+
+      const connection = await connectWallet('albedo');
+      expect(mockAlbedo.getNetwork).toHaveBeenCalledTimes(1);
+      expect(connection).toEqual({
+        type: 'albedo',
+        publicKey: 'GBALBEDO456',
+        network: 'MAINNET',
+      });
+    });
+
+    it('defaults albedo network to TESTNET when neither publicKey nor getNetwork reports a network', async () => {
+      const mockAlbedo = {
+        publicKey: jest.fn().mockResolvedValue({ pubkey: 'GBALBEDO789', token: 'tok' }),
+      };
+      global.window = { albedo: mockAlbedo } as any;
+
+      const connection = await connectWallet('albedo');
+      expect(connection).toEqual({
+        type: 'albedo',
+        publicKey: 'GBALBEDO789',
+        network: 'TESTNET',
+      });
+    });
+
+    it('throws USER_REJECTED if albedo publicKey returns no pubkey', async () => {
+      const mockAlbedo = {
+        publicKey: jest.fn().mockResolvedValue({ pubkey: '', token: '' }),
+      };
+      global.window = { albedo: mockAlbedo } as any;
+
+      await expect(connectWallet('albedo')).rejects.toMatchObject({
+        code: 'USER_REJECTED',
       });
     });
   });
