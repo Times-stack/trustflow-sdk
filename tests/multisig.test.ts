@@ -1080,6 +1080,48 @@ describe('MultiSigEscrowClient against the real client', () => {
       expect(submitRes.ok).toBe(false);
       expect(submitTransactionMock).not.toHaveBeenCalled();
     });
+
+    it('rejects empty or duplicate signers and duplicate collectedSignatures entries (#434)', () => {
+      const client = makeClient();
+      const operationId = initOperation(client);
+      const baseSnapshot = client.exportState(operationId) as MultiSigStateSnapshot;
+
+      expect(
+        client.importState({
+          ...baseSnapshot,
+          signers: [],
+        }),
+      ).toEqual({
+        ok: false,
+        error: 'snapshot.signers must contain at least one signer',
+      });
+
+      expect(
+        client.importState({
+          ...baseSnapshot,
+          signers: [signers.a.publicKey(), signers.a.publicKey()],
+        }),
+      ).toEqual({
+        ok: false,
+        error: 'Duplicate signer addresses are not allowed in snapshot.signers',
+      });
+
+      const validEntry = {
+        signerAddress: signers.a.publicKey(),
+        signedXdr: signedXdrFor(signers.a),
+        addedAt: Date.now(),
+        verified: true,
+      };
+      expect(
+        client.importState({
+          ...baseSnapshot,
+          collectedSignatures: [validEntry, { ...validEntry }],
+        }),
+      ).toEqual({
+        ok: false,
+        error: `snapshot.collectedSignatures[1] contains duplicate signature from ${signers.a.publicKey()}`,
+      });
+    });
   });
 
   describe('MultiSigConfig integration (#442)', () => {
