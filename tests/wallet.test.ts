@@ -1,4 +1,4 @@
-import { connectWallet, disconnectWallet, normalizeWalletNetwork } from '../src/wallet/connect';
+import { connectWallet, disconnectWallet, normalizeWalletNetwork } from '../src/wallet';
 import { getFreighter, isFreighterInstalled } from '../src/wallet/freighter';
 import { getAlbedo } from '../src/wallet/albedo';
 import { TrustFlowError } from '../src/errors';
@@ -101,20 +101,20 @@ describe('wallet module', () => {
 
     it('throws UNAUTHORIZED if freighter is not installed', async () => {
       await expect(connectWallet('freighter')).rejects.toMatchObject(
-        new TrustFlowError('Freighter not installed', 'UNAUTHORIZED')
+        new TrustFlowError('Freighter not installed', 'UNAUTHORIZED'),
       );
     });
 
     it('throws UNAUTHORIZED if albedo is not available', async () => {
       await expect(connectWallet('albedo')).rejects.toMatchObject(
-        new TrustFlowError('Albedo not available', 'UNAUTHORIZED')
+        new TrustFlowError('Albedo not available', 'UNAUTHORIZED'),
       );
     });
 
     it('throws UNAUTHORIZED if wallet type is unsupported', async () => {
       // @ts-expect-error Testing invalid wallet type
       await expect(connectWallet('unsupported')).rejects.toMatchObject(
-        new TrustFlowError('Wallet type unsupported not supported', 'UNAUTHORIZED')
+        new TrustFlowError('Wallet type unsupported not supported', 'UNAUTHORIZED'),
       );
     });
 
@@ -192,6 +192,21 @@ describe('wallet module', () => {
       expect(connection).toEqual({
         type: 'albedo',
         publicKey: 'GBALBEDO789',
+        network: 'TESTNET',
+      });
+    });
+
+    it('falls back to TESTNET when albedo getNetwork() rejects after publicKey() succeeds', async () => {
+      const mockAlbedo = {
+        publicKey: jest.fn().mockResolvedValue({ pubkey: 'GBALBEDO999', token: 'tok' }),
+        getNetwork: jest.fn().mockRejectedValue(new Error('getNetwork not supported')),
+      };
+      global.window = { albedo: mockAlbedo } as any;
+
+      const connection = await connectWallet('albedo');
+      expect(connection).toEqual({
+        type: 'albedo',
+        publicKey: 'GBALBEDO999',
         network: 'TESTNET',
       });
     });

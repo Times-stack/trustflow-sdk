@@ -60,9 +60,14 @@ export async function connectWallet(type: WalletType = 'freighter'): Promise<Wal
       if (!res?.pubkey) {
         throw TrustFlowError.userRejected('User rejected Albedo connection');
       }
-      const rawNetwork =
-        res.network ??
-        (typeof albedo.getNetwork === 'function' ? await albedo.getNetwork() : undefined);
+      let rawNetwork: string | undefined = res.network;
+      if (rawNetwork === undefined && typeof albedo.getNetwork === 'function') {
+        try {
+          rawNetwork = await albedo.getNetwork();
+        } catch {
+          rawNetwork = undefined;
+        }
+      }
       return {
         type: 'albedo',
         publicKey: res.pubkey,
