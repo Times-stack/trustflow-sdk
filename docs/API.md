@@ -393,6 +393,10 @@ const uri = generateSep7Uri(preparedXdr, {
 - `getAlbedo()` — Gets the Albedo wallet adapter
   - Returns the Albedo instance (does not throw if unavailable; returns null or throws on actual use)
 
+- `createWalletAdapter(walletType?)` — Creates a `WalletAdapter` instance for `'freighter'` (default) or `'albedo'`
+- `FreighterWalletAdapter` — Concrete `WalletAdapter` implementation backed by Freighter
+- `AlbedoWalletAdapter` — Concrete `WalletAdapter` implementation backed by Albedo
+
 ### Types
 
 - `WalletType` — Union of supported types: `'freighter' | 'albedo' | 'xbull' | 'manual'`
@@ -404,15 +408,16 @@ const uri = generateSep7Uri(preparedXdr, {
     network: string;         // The network name (e.g., 'TESTNET', 'PUBLIC')
   }
   ```
-  Note: This object contains connection state only. To sign, obtain the wallet adapter directly from `getFreighter()` or similar.
+  Note: This object contains connection state only. To sign, obtain a `WalletAdapter` via `createWalletAdapter()` or the low-level provider from `getFreighter()`.
   
-- `WalletAdapter` — Interface for wallet provider APIs (not returned by `connectWallet`):
+- `WalletAdapter` — Uniform interface implemented by `FreighterWalletAdapter`, `AlbedoWalletAdapter`, and `MockWalletAdapter`:
   ```typescript
   interface WalletAdapter {
     type: WalletType;
     isAvailable(): Promise<boolean>;
     connect(): Promise<WalletConnection>;
     sign(xdr: string, network: string): Promise<string>;  // Sign an XDR transaction
+    signMessage(message: string): Promise<string>;        // Sign an arbitrary UTF-8 message
     disconnect(): Promise<void>;
   }
   ```

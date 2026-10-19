@@ -63,6 +63,14 @@ describe('Testing Kit Subpath (#240)', () => {
     await adapter.disconnect();
     expect(await adapter.isAvailable()).toBe(false);
     expect(await adapter.isConnected()).toBe(false);
+
+    const disconnectedButAvailable = new MockWalletAdapter({
+      publicKey: address,
+      available: true,
+      connected: false,
+    });
+    expect(await disconnectedButAvailable.isAvailable()).toBe(true);
+    expect(await disconnectedButAvailable.isConnected()).toBe(false);
   });
 
   it('builds typed fixtures for Escrow, EscrowState, and ContractEvents', () => {

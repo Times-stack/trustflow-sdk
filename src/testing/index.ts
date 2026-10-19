@@ -471,6 +471,7 @@ export interface MockWalletAdapterOptions {
   type?: WalletType;
   publicKey?: string;
   network?: string;
+  available?: boolean;
   connected?: boolean;
   rejectNextError?: Error | string | null;
   shouldReject?: boolean;
@@ -481,6 +482,7 @@ export class MockWalletAdapter implements WalletAdapter {
   publicKey: string;
   network: string = 'TESTNET';
   connected: boolean = true;
+  private availableOverride?: boolean;
   private nextRejection: Error | null = null;
 
   constructor(
@@ -495,6 +497,7 @@ export class MockWalletAdapter implements WalletAdapter {
       this.publicKey =
         optionsOrKey.publicKey ?? 'GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF';
       this.network = optionsOrKey.network ?? 'TESTNET';
+      this.availableOverride = optionsOrKey.available;
       this.connected = optionsOrKey.connected ?? true;
       if (optionsOrKey.rejectNextError) {
         this.rejectNext(optionsOrKey.rejectNextError);
@@ -521,7 +524,7 @@ export class MockWalletAdapter implements WalletAdapter {
   }
 
   async isAvailable(): Promise<boolean> {
-    return this.connected;
+    return this.availableOverride ?? this.connected;
   }
 
   async isConnected(): Promise<boolean> {
