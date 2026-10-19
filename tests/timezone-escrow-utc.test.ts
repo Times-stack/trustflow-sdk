@@ -102,6 +102,10 @@ describe('Timezone and UTC deadline handling - Issue #358', () => {
   });
 
   describe('normalizeMilestoneExpiration', () => {
+    function expectType<Expected>(_value: Expected): void {
+      // Compile-time type assertion helper
+    }
+
     it('normalizes array of milestone deadlines and ensures chronological order', () => {
       const now = Date.now();
       const m1Date = new Date(now + 100000);
@@ -113,8 +117,17 @@ describe('Timezone and UTC deadline handling - Issue #358', () => {
       ];
 
       const normalized = normalizeMilestoneExpiration(milestones);
+      expectType<Array<(typeof milestones)[number] & { deadline: number }>>(normalized);
+      expectType<number>(normalized[0].deadline);
       expect(normalized[0].deadline).toBe(Math.floor(m1Date.getTime() / 1000));
       expect(normalized[1].deadline).toBe(Math.floor(m2Date.getTime() / 1000));
+    });
+
+    it('normalizes a scalar Date, number, or ISO string and returns a typed number', () => {
+      const futureDate = new Date(Date.now() + 120000);
+      const normalizedScalar = normalizeMilestoneExpiration(futureDate);
+      expectType<number>(normalizedScalar);
+      expect(normalizedScalar).toBe(Math.floor(futureDate.getTime() / 1000));
     });
 
     it('rejects unordered milestone deadlines with INVALID_EXPIRATION', () => {
