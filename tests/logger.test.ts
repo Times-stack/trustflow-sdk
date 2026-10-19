@@ -72,6 +72,57 @@ describe('SDKLogger level filtering', () => {
     expect((context['nested'] as Record<string, unknown>)['safe']).toBe('ok');
   });
 
+  it('preserves array shape and order in logged context', () => {
+    const log = new SDKLogger({ minLevel: 'debug' });
+    log.info('batch', {
+      items: [1, 2, 3],
+      empty: [],
+      nestedArrays: [['a', 'b'], ['c']],
+      note: 'ok',
+    });
+    expect(infoSpy).toHaveBeenCalledTimes(1);
+    const context = infoSpy.mock.calls[0][1] as Record<string, unknown>;
+    expect(Array.isArray(context['items'])).toBe(true);
+    expect(context['items']).toEqual([1, 2, 3]);
+    expect(Array.isArray(context['empty'])).toBe(true);
+    expect(context['empty']).toEqual([]);
+    expect(Array.isArray(context['nestedArrays'])).toBe(true);
+    expect(context['nestedArrays']).toEqual([['a', 'b'], ['c']]);
+    expect(context['note']).toBe('ok');
+  });
+
+  it('redacts sensitive keys inside array elements while preserving array shape', () => {
+    const log = new SDKLogger({ minLevel: 'debug' });
+    log.info('credentials', {
+      entries: [
+        { apiKey: 'secret-1', label: 'primary' },
+        { password: 'secret-2', nested: [{ token: 'secret-3', id: 42 }] },
+      ],
+      tokens: [{ apiKey: 'x' }],
+      rawTokens: ['jwt-1', 'jwt-2'],
+    });
+    expect(infoSpy).toHaveBeenCalledTimes(1);
+    const context = infoSpy.mock.calls[0][1] as Record<string, unknown>;
+    expect(Array.isArray(context['entries'])).toBe(true);
+    expect(context['entries']).toEqual([
+      { apiKey: '[REDACTED]', label: 'primary' },
+      { password: '[REDACTED]', nested: [{ token: '[REDACTED]', id: 42 }] },
+    ]);
+    expect(Array.isArray(context['tokens'])).toBe(true);
+    expect(context['tokens']).toEqual([{ apiKey: '[REDACTED]' }]);
+    expect(Array.isArray(context['rawTokens'])).toBe(true);
+    expect(context['rawTokens']).toEqual(['[REDACTED]', '[REDACTED]']);
+  });
+
+  it('preserves top-level array context and redacts sensitive elements', () => {
+    const log = new SDKLogger({ minLevel: 'debug' });
+    log.info('top-level-array', [{ apiKey: 'secret' }, 'plain-item']);
+    expect(infoSpy).toHaveBeenCalledTimes(1);
+    const context = infoSpy.mock.calls[0][1];
+    expect(Array.isArray(context)).toBe(true);
+    expect(context).toEqual([{ apiKey: '[REDACTED]' }, 'plain-item']);
+  });
+
   it('emits structured JSON with timestamp/scope/message/context', () => {
     const logSpy = jest.spyOn(console, 'log').mockImplementation(() => undefined);
     const log = new SDKLogger({ minLevel: 'info', json: true, prefix: 'TestScope' });

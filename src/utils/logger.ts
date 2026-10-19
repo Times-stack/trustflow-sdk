@@ -20,6 +20,9 @@ function shouldLog(level: LogLevel, minLevel: LogLevel): boolean {
 /** Redact sensitive fields from log context */
 function redactContext(context: unknown): unknown {
   if (!context || typeof context !== 'object') return context;
+  if (Array.isArray(context)) {
+    return context.map((item) => redactContext(item));
+  }
 
   const sensitiveKeys = [
     'authorization',
@@ -35,7 +38,12 @@ function redactContext(context: unknown): unknown {
 
   for (const [key, value] of Object.entries(context as Record<string, unknown>)) {
     const lowerKey = key.toLowerCase();
-    if (sensitiveKeys.some((k) => lowerKey.includes(k))) {
+    const isSensitive = sensitiveKeys.some((k) => lowerKey.includes(k));
+    if (Array.isArray(value)) {
+      result[key] = value.map((item) =>
+        item && typeof item === 'object' ? redactContext(item) : isSensitive ? '[REDACTED]' : item,
+      );
+    } else if (isSensitive) {
       result[key] = '[REDACTED]';
     } else if (value && typeof value === 'object') {
       result[key] = redactContext(value);
