@@ -1,5 +1,6 @@
 import type { IPFSConfig } from './storage';
 import type { ApiRetryConfig } from './utils/http';
+import type { RequestValidationConfig } from './utils/request-validation';
 import type { AddAccountInput } from './accounts/types';
 import type { LogLevel, Logger } from './utils/logger';
 import type { Horizon, rpc } from '@stellar/stellar-sdk';
@@ -47,6 +48,8 @@ export interface ClientConfig {
   ipfs?: IPFSConfig;
   /** Retry budget for network and RPC calls. */
   retry?: ApiRetryConfig;
+  /** Client-side request body and header size validation limits for outgoing HTTP requests. */
+  requestValidation?: RequestValidationConfig;
   /**
    * Default per-request timeout in milliseconds for Horizon and Soroban RPC
    * calls. Every per-call option (`ReadContractStateOptions.timeoutMs`,

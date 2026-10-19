@@ -5,6 +5,8 @@ import type { HttpInterceptors } from './interceptors';
 import { logger } from './logger';
 import { SDK_VERSION, DEFAULT_API_VERSION } from '../constants';
 import { DEFAULT_TIMEOUT_MS, isAxiosTimeoutError, axiosTimeoutMs } from './timeout';
+import { validateHeaderSize, validateRequestSize } from './request-validation';
+import type { RequestValidationConfig } from './request-validation';
 
 declare module 'axios' {
   export interface AxiosRequestConfig {
@@ -66,6 +68,18 @@ export interface ApiHttpClientOptions {
   additionalHeaders?: Record<string, string>;
   /** Request/response interceptor hooks applied to every call made by this client. */
   interceptors?: HttpInterceptors;
+  /**
+   * Client-side request body and header size validation limits applied before
+   * each outgoing request is dispatched. Defaults to a 10MB body limit and
+   * 8KB per-header limit.
+   */
+  requestValidation?: RequestValidationConfig;
+  /**
+   * Shorthand for `requestValidation.maxRequestSizeBytes`: maximum allowed
+   * request body size in bytes before a request is rejected locally with
+   * `VALIDATION_ERROR`.
+   */
+  maxRequestSizeBytes?: number;
 }
 
 const DEFAULT_RETRY_CONFIG: Required<ApiRetryConfig> = {
@@ -230,6 +244,16 @@ export function createApiHttpClient(options: ApiHttpClientOptions): AxiosInstanc
     ...options.retry,
   };
 
+  const validationConfig: RequestValidationConfig | undefined =
+    options.requestValidation || options.maxRequestSizeBytes !== undefined
+      ? {
+          ...options.requestValidation,
+          ...(options.maxRequestSizeBytes !== undefined
+            ? { maxRequestSizeBytes: options.maxRequestSizeBytes }
+            : {}),
+        }
+      : undefined;
+
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
     'X-SDK-Version': SDK_VERSION,
@@ -241,10 +265,35 @@ export function createApiHttpClient(options: ApiHttpClientOptions): AxiosInstanc
     headers['Authorization'] = `Bearer ${options.apiKey}`;
   }
 
+  validateHeaderSize(headers, validationConfig?.maxHeaderSizeBytes);
+
   const instance = axios.create({
     baseURL: options.baseURL,
     timeout: options.timeoutMs ?? DEFAULT_TIMEOUT_MS,
     headers,
+  });
+
+  // Validate outgoing request headers and body sizes before any network call is
+  // dispatched. Registered before user interceptors so Axios's LIFO request
+  // interceptor order runs user hooks first and validates the final payload.
+  instance.interceptors?.request?.use((config) => {
+    if (config.headers) {
+      const rawHeaders =
+        typeof (config.headers as { toJSON?: () => Record<string, unknown> }).toJSON === 'function'
+          ? (config.headers as { toJSON: () => Record<string, unknown> }).toJSON()
+          : (config.headers as Record<string, unknown>);
+      const stringHeaders: Record<string, string> = {};
+      for (const [key, value] of Object.entries(rawHeaders)) {
+        if (typeof value === 'string') {
+          stringHeaders[key] = value;
+        }
+      }
+      validateHeaderSize(stringHeaders, validationConfig?.maxHeaderSizeBytes);
+    }
+    if (config.data !== undefined && config.data !== null) {
+      validateRequestSize(config.data, validationConfig);
+    }
+    return config;
   });
 
   // Interceptors are attached first so request hooks run once per attempt
