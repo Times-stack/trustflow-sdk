@@ -9,29 +9,35 @@ export function useBalance(client: TrustFlowClient, address: string | null) {
   useEffect(() => {
     if (!address) {
       setBalance(null);
+      setError(null);
+      setLoading(false);
       return;
     }
     let cancelled = false;
+    const controller = new AbortController();
+    setBalance(null);
+    setError(null);
     setLoading(true);
     client
       .getBalance(address)
       .then((b) => {
-        if (!cancelled) {
+        if (!cancelled && !controller.signal.aborted) {
           setBalance(b);
         }
       })
       .catch((e) => {
-        if (!cancelled) {
-          setError(e.message);
+        if (!cancelled && !controller.signal.aborted) {
+          setError(e instanceof Error ? e.message : String(e));
         }
       })
       .finally(() => {
-        if (!cancelled) {
+        if (!cancelled && !controller.signal.aborted) {
           setLoading(false);
         }
       });
     return () => {
       cancelled = true;
+      controller.abort();
     };
   }, [client, address]);
 
