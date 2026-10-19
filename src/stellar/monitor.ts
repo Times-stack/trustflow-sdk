@@ -1,6 +1,7 @@
 import { fetchAccountInfo, AccountInfo } from './account';
 import { StellarNetwork } from './network';
 import { logger } from '../utils/logger';
+import { DEFAULT_TIMEOUT_MS, fetchWithTimeout } from '../utils/timeout';
 
 /**
  * Configuration options for the Stellar account balance monitor.
@@ -18,6 +19,8 @@ export interface AccountMonitorConfig {
   webhookUrl?: string;
   /** Optional HTTP headers to include with webhook POST requests (e.g. auth headers). */
   webhookHeaders?: Record<string, string>;
+  /** Optional timeout in milliseconds for webhook POST requests. Defaults to 10,000ms. */
+  webhookTimeoutMs?: number;
   /** Optional custom account fetch function for testing or custom RPC endpoints. */
   fetchFn?: (address: string, network: StellarNetwork) => Promise<AccountInfo>;
 }
@@ -59,11 +62,13 @@ export class AccountBalanceMonitor {
   private readonly pollIntervalMs: number;
   private readonly webhookUrl?: string;
   private readonly webhookHeaders?: Record<string, string>;
+  private readonly webhookTimeoutMs: number;
   private readonly fetchFn: (address: string, network: StellarNetwork) => Promise<AccountInfo>;
 
   private timer?: ReturnType<typeof setInterval>;
   private running = false;
   private lastBalance?: string;
+  private inFlightCheck: Promise<BalanceUpdate | null> | null = null;
 
   private lowBalanceHandlers = new Set<AccountMonitorEventHandler<LowBalanceAlert>>();
   private updateHandlers = new Set<AccountMonitorEventHandler<BalanceUpdate>>();
@@ -82,6 +87,7 @@ export class AccountBalanceMonitor {
     this.pollIntervalMs = config.pollIntervalMs ?? 30_000;
     this.webhookUrl = config.webhookUrl;
     this.webhookHeaders = config.webhookHeaders;
+    this.webhookTimeoutMs = config.webhookTimeoutMs ?? DEFAULT_TIMEOUT_MS;
     this.fetchFn = config.fetchFn ?? fetchAccountInfo;
   }
 
@@ -145,8 +151,26 @@ export class AccountBalanceMonitor {
 
   /**
    * Immediately triggers a single balance check cycle.
+   * Coalesces concurrent calls so only one balance check is in flight at a time.
    */
   async checkNow(): Promise<BalanceUpdate | null> {
+    if (this.inFlightCheck) {
+      return this.inFlightCheck;
+    }
+
+    const checkPromise = (async () => {
+      try {
+        return await this.performCheck();
+      } finally {
+        this.inFlightCheck = null;
+      }
+    })();
+
+    this.inFlightCheck = checkPromise;
+    return checkPromise;
+  }
+
+  private async performCheck(): Promise<BalanceUpdate | null> {
     try {
       const info = await this.fetchFn(this.address, this.network);
       const prev = this.lastBalance;
@@ -209,17 +233,22 @@ export class AccountBalanceMonitor {
   private async sendWebhook(alert: LowBalanceAlert): Promise<void> {
     try {
       if (typeof fetch !== 'undefined' && this.webhookUrl) {
-        await fetch(this.webhookUrl, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            ...this.webhookHeaders,
+        await fetchWithTimeout(
+          this.webhookUrl,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              ...this.webhookHeaders,
+            },
+            body: JSON.stringify({
+              event: 'account.low_balance',
+              data: alert,
+            }),
           },
-          body: JSON.stringify({
-            event: 'account.low_balance',
-            data: alert,
-          }),
-        });
+          this.webhookTimeoutMs,
+          'sendWebhook',
+        );
       }
     } catch (webhookErr) {
       logger.error('Failed to send low balance webhook notification', { webhookErr });
