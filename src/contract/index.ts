@@ -12,13 +12,18 @@ export {
 } from './spec';
 export {
   SorobanContractClient,
+  TrustFlowContractClient,
   createContractBinding,
   generateContractBindings,
   generateTypeScriptBindings,
 } from './bindings';
 export { invokeContract, type SignAndSubmitFn, type InvokeContractOptions } from './invoke';
 export { readContractState, type ReadContractStateOptions } from './read';
-export { simulateContractCall } from './simulate';
+export {
+  simulateContractCall,
+  estimateResourceFootprint,
+  parseResourceFootprint,
+} from './simulate';
 export { simulateTransaction, type SimulationOutcome } from './simulation';
 export {
   buildCreateEscrowArgs,
@@ -30,4 +35,8 @@ export {
   buildVoteArgs,
   buildRevealArgs,
 } from './build';
-export type { SimulationResult, SimulateContractCallOptions } from './simulate';
+export type {
+  SimulationResult,
+  SimulateContractCallOptions,
+  ResourceFootprintEstimate,
+} from './simulate';

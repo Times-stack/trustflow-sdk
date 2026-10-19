@@ -1,11 +1,11 @@
 import { xdr, Contract, Account, TransactionBuilder, BASE_FEE } from '@stellar/stellar-sdk';
 import type { TrustFlowClient } from '../client';
 import type { ContractCallResult } from '../types/contract';
-import type { SimulationResult } from './simulate';
+import type { ResourceFootprintEstimate, SimulationResult } from './simulate';
 import type { SignAndSubmitFn } from './invoke';
 import { invokeContract } from './invoke';
 import { readContractState } from './read';
-import { simulateContractCall } from './simulate';
+import { estimateResourceFootprint, simulateContractCall } from './simulate';
 import { AbstractContractClient } from './abstract';
 import { SorobanSpec } from './spec';
 
@@ -149,7 +149,45 @@ export class SorobanContractClient extends AbstractContractClient {
 
     return simulateContractCall(this.client, tx.toXDR());
   }
+
+  /**
+   * Simulates execution of a contract method and returns human-readable CPU instructions,
+   * RAM bytes, and fee estimates in stroops and XLM prior to broadcasting.
+   *
+   * @param methodName - Function name defined in contract spec
+   * @param args - Arguments array or object map
+   * @returns Promise resolving to ResourceFootprintEstimate
+   */
+  override async estimateResourceFootprint(
+    methodName: string,
+    args: Record<string, unknown> | unknown[] = [],
+  ): Promise<ResourceFootprintEstimate> {
+    const scVals = this.encodeArgs(methodName, args);
+    const contract = new Contract(this.contractId);
+    const operation = contract.call(methodName, ...(scVals as any[]));
+
+    const dummyAccount = new Account(
+      'GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF',
+      '0',
+    );
+
+    const tx = new TransactionBuilder(dummyAccount, {
+      fee: BASE_FEE,
+      networkPassphrase: this.client.getNetworkPassphrase(),
+    })
+      .addOperation(operation)
+      .setTimeout(30)
+      .build();
+
+    return estimateResourceFootprint(this.client, tx.toXDR(), { baseFeeStroops: BASE_FEE });
+  }
 }
+
+/**
+ * Alias for {@link SorobanContractClient} exposing spec-driven contract invocation,
+ * simulation, and resource footprint estimation.
+ */
+export { SorobanContractClient as TrustFlowContractClient };
 
 /**
  * Creates dynamic type-safe contract client bindings from Soroban spec XDR entries.
