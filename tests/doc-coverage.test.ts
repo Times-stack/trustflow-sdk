@@ -66,7 +66,7 @@ describe('scripts/check-doc-coverage.js (#452)', () => {
       );
       fs.writeFileSync(
         docFile,
-        `# API\n- \`TrustFlowClient\`\n- \`MultiSigEscrowClient\`\n- \`documentedHelper\`\n- \`NamedExport\`\n- \`NamedType\`\n`,
+        `# API\n- \`documentedHelper\`\n- \`NamedExport\`\n- \`NamedType\`\n`,
         'utf8',
       );
 
@@ -79,6 +79,75 @@ describe('scripts/check-doc-coverage.js (#452)', () => {
       const passResult = checkDocCoverage({ entryPointPath: idxFile, apiDocPath: docFile });
       expect(passResult.ok).toBe(true);
       expect(passResult.missingSymbols).toEqual([]);
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
+
+  it('fails when TrustFlowClient is removed from docs/API.md against real src/index.ts', () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'trustflow-doc-real-'));
+    try {
+      const modifiedDocPath = path.join(tmpDir, 'API.md');
+      const realDoc = fs.readFileSync(apiDocPath, 'utf8');
+      const strippedDoc = realDoc.replace(/\bTrustFlowClient\b/g, 'RemovedClientPlaceholder');
+      fs.writeFileSync(modifiedDocPath, strippedDoc, 'utf8');
+
+      const result = checkDocCoverage({ entryPointPath, apiDocPath: modifiedDocPath });
+      expect(result.ok).toBe(false);
+      expect(result.missingSymbols).toContain('TrustFlowClient');
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
+
+  it('handles circular barrel re-exports, comment-like string literals, destructuring, and case-sensitivity', () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'trustflow-doc-ast-'));
+    try {
+      const aFile = path.join(tmpDir, 'a.ts');
+      const bFile = path.join(tmpDir, 'b.ts');
+      const docFile = path.join(tmpDir, 'API.md');
+
+      fs.writeFileSync(
+        aFile,
+        [
+          `export * from './b';`,
+          `const markerStart = '/* not a comment start';`,
+          `export function survivingBetweenStrings() { return markerStart; }`,
+          `const markerEnd = 'not a comment end */';`,
+          `export const { alpha, beta: renamedBeta } = { alpha: 1, beta: markerEnd };`,
+          `export const FIRST = 1, SECOND = 2;`,
+        ].join('\n'),
+        'utf8',
+      );
+      fs.writeFileSync(
+        bFile,
+        `export * from './a';\nexport interface CaseSensitiveSymbol { id: string; }\n`,
+        'utf8',
+      );
+
+      const extracted: Set<string> = extractExportedSymbols(aFile);
+      expect(Array.from(extracted).sort()).toEqual(
+        [
+          'CaseSensitiveSymbol',
+          'FIRST',
+          'SECOND',
+          'alpha',
+          'renamedBeta',
+          'survivingBetweenStrings',
+        ].sort(),
+      );
+
+      // Lowercase `casesensitivesymbol` in prose must not satisfy `CaseSensitiveSymbol`
+      fs.writeFileSync(
+        docFile,
+        `# API\n` +
+          `This mentions casesensitivesymbol in lowercase prose only.\n` +
+          `- \`survivingBetweenStrings\`\n- \`alpha\`\n- \`renamedBeta\`\n- \`FIRST\`\n- \`SECOND\`\n`,
+        'utf8',
+      );
+      const caseFail = checkDocCoverage({ entryPointPath: aFile, apiDocPath: docFile });
+      expect(caseFail.ok).toBe(false);
+      expect(caseFail.missingSymbols).toEqual(['CaseSensitiveSymbol']);
     } finally {
       fs.rmSync(tmpDir, { recursive: true, force: true });
     }
