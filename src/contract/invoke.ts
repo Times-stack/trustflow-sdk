@@ -6,6 +6,7 @@ import { withTransientRetry } from '../utils/node-retry';
 import { logger } from '../utils/logger';
 import type { ReadContractStateOptions } from './read';
 import { simulateTransaction } from './simulation';
+import { DEFAULT_RESOURCE_FEE_MULTIPLIER, padResourceFee } from '../tx-pipeline/pipeline';
 
 export type SignAndSubmitFn = (xdr: string) => Promise<string>;
 
@@ -23,6 +24,13 @@ export interface InvokeContractOptions extends AccountOptions {
    * {@link ClientConfig.timeoutMs}.
    */
   timeoutMs?: number;
+  /**
+   * Safety headroom multiplier applied on top of the RPC-reported
+   * `minResourceFee` before `assembleTransaction`, matching
+   * {@link import('../tx-pipeline/types').PrepareOptions.resourceFeeMultiplier}.
+   * Defaults to {@link DEFAULT_RESOURCE_FEE_MULTIPLIER} (`1.1`, i.e. 10% headroom).
+   */
+  resourceFeeMultiplier?: number;
 }
 
 /**
@@ -120,11 +128,20 @@ export async function invokeContract(
       };
     }
 
+    const multiplier = options.resourceFeeMultiplier ?? DEFAULT_RESOURCE_FEE_MULTIPLIER;
+    const paddedFee = padResourceFee(simulation.minResourceFee ?? '0', multiplier);
+    if (
+      simulation.transactionData &&
+      typeof simulation.transactionData.setResourceFee === 'function'
+    ) {
+      simulation.transactionData.setResourceFee(paddedFee);
+    }
+
     const prepared = rpc
       .assembleTransaction(tx, {
         transactionData: simulation.transactionData ?? '',
         events: [],
-        minResourceFee: simulation.minResourceFee ?? '0',
+        minResourceFee: paddedFee,
         result: { retval: simulation.returnValue as any },
       } as any)
       .build();

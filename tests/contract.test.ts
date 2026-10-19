@@ -144,6 +144,90 @@ describe('contract module', () => {
       expect(result.txHash).toBe('tx_hash');
       expect(signAndSubmit).toHaveBeenCalledWith('xdr_string');
     });
+
+    it('applies default 1.1x resource-fee safety margin before assembleTransaction (#438)', async () => {
+      (rpc.Api.isSimulationError as unknown as jest.Mock).mockReturnValue(false);
+      const setResourceFee = jest.fn();
+      const mockTxData = { setResourceFee };
+      const mockServer = {
+        getAccount: jest
+          .fn()
+          .mockResolvedValue({ accountId: () => 'GBM...', sequenceNumber: () => '1' }),
+        simulateTransaction: jest.fn().mockResolvedValue({
+          minResourceFee: '1005',
+          transactionData: mockTxData,
+          result: { retval: 'value' },
+        }),
+      };
+      (rpc.Server as jest.Mock).mockImplementation(() => mockServer);
+      (Contract as jest.Mock).mockImplementation(() => ({
+        call: jest.fn().mockReturnValue({}),
+      }));
+      (rpc.assembleTransaction as jest.Mock).mockReturnValue({
+        build: jest.fn().mockReturnValue({ toXDR: () => 'xdr_string' }),
+      });
+
+      const signAndSubmit = jest.fn().mockResolvedValue('tx_hash');
+      const result = await invokeContract(mockClient, 'release', [], 'GBM...', signAndSubmit);
+
+      expect(result.success).toBe(true);
+      // Math.ceil(1005 * 1.1) = 1106 (not raw '1005')
+      expect(setResourceFee).toHaveBeenCalledWith('1106');
+      expect(rpc.assembleTransaction).toHaveBeenCalledWith(
+        'mock_tx',
+        expect.objectContaining({
+          minResourceFee: '1106',
+          transactionData: mockTxData,
+        }),
+      );
+    });
+
+    it('honors custom resourceFeeMultiplier in InvokeContractOptions (#438)', async () => {
+      (rpc.Api.isSimulationError as unknown as jest.Mock).mockReturnValue(false);
+      const mockServer = {
+        getAccount: jest
+          .fn()
+          .mockResolvedValue({ accountId: () => 'GBM...', sequenceNumber: () => '1' }),
+        simulateTransaction: jest.fn().mockResolvedValue({
+          minResourceFee: '10000',
+          result: { retval: 'value' },
+        }),
+      };
+      (rpc.Server as jest.Mock).mockImplementation(() => mockServer);
+      (Contract as jest.Mock).mockImplementation(() => ({
+        call: jest.fn().mockReturnValue({}),
+      }));
+      (rpc.assembleTransaction as jest.Mock).mockReturnValue({
+        build: jest.fn().mockReturnValue({ toXDR: () => 'xdr_string' }),
+      });
+
+      const signAndSubmit = jest.fn().mockResolvedValue('tx_hash');
+      const result = await invokeContract(mockClient, 'release', [], 'GBM...', signAndSubmit, {
+        resourceFeeMultiplier: 1.25,
+      });
+
+      expect(result.success).toBe(true);
+      expect(rpc.assembleTransaction).toHaveBeenCalledWith(
+        'mock_tx',
+        expect.objectContaining({
+          minResourceFee: '12500',
+        }),
+      );
+    });
+
+    it('handles zero, missing, or invalid multiplier inputs gracefully in padResourceFee (#438)', async () => {
+      const { padResourceFee, DEFAULT_RESOURCE_FEE_MULTIPLIER } =
+        await import('../src/tx-pipeline/pipeline');
+      expect(DEFAULT_RESOURCE_FEE_MULTIPLIER).toBe(1.1);
+      expect(padResourceFee('0')).toBe('0');
+      expect(padResourceFee('')).toBe('0');
+      expect(padResourceFee('-500')).toBe('0');
+      expect(padResourceFee('not-a-number')).toBe('0');
+      expect(padResourceFee('1000', 0)).toBe('1100');
+      expect(padResourceFee('1000', -2)).toBe('1100');
+      expect(padResourceFee('1000', Number.NaN)).toBe('1100');
+      expect(padResourceFee('1000', 1)).toBe('1000');
+    });
   });
 
   describe('read.ts', () => {

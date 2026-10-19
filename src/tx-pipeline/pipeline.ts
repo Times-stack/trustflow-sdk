@@ -36,9 +36,29 @@ const DEFAULT_RETRY_POLICY: Required<Omit<RetryPolicy, 'timeoutMs'>> = {
   maxDelayMs: 5000,
 };
 
-const DEFAULT_RESOURCE_FEE_MULTIPLIER = 1.1;
+export const DEFAULT_RESOURCE_FEE_MULTIPLIER = 1.1;
 const DEFAULT_POLL_INTERVAL_MS = 1500;
 const DEFAULT_POLL_ATTEMPTS = 10;
+
+/**
+ * Applies a safety headroom multiplier to a simulated Soroban `minResourceFee`
+ * (in stroops) and rounds up to an integer stroop string.
+ *
+ * @param minResourceFee - Simulated minimum resource fee in stroops (default `'0'`)
+ * @param multiplier - Safety multiplier (default {@link DEFAULT_RESOURCE_FEE_MULTIPLIER}, `1.1`)
+ */
+export function padResourceFee(
+  minResourceFee: string | number = '0',
+  multiplier: number = DEFAULT_RESOURCE_FEE_MULTIPLIER,
+): string {
+  const raw = Number(minResourceFee || 0);
+  if (!Number.isFinite(raw) || raw <= 0) {
+    return '0';
+  }
+  const effectiveMultiplier =
+    Number.isFinite(multiplier) && multiplier > 0 ? multiplier : DEFAULT_RESOURCE_FEE_MULTIPLIER;
+  return Math.ceil(raw * effectiveMultiplier).toString();
+}
 
 function ok<T>(data: T): PipelineResult<T> {
   return { ok: true, data };
@@ -428,7 +448,7 @@ export class TransactionPipeline {
           );
         }
 
-        const paddedFee = Math.ceil(Number(simulation.minResourceFee) * multiplier).toString();
+        const paddedFee = padResourceFee(simulation.minResourceFee, multiplier);
         simulation.transactionData.setResourceFee(paddedFee);
         this.pipelineLogger.debug('Transaction prepared', {
           paddedFee,
