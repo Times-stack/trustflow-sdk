@@ -15,6 +15,9 @@ describe('SDK Barrel Public Export Surface Integration Tests', () => {
     'getAlbedo',
     'generateSep7Uri',
     'SEP7_MAX_URI_LENGTH',
+    'signWithFreighter',
+    'signMessageWithFreighter',
+    'signMessageWithKeypair',
   ];
 
   it('should assert all core modules and clients are correctly exported from the public entry point', () => {
@@ -47,6 +50,9 @@ describe('SDK Barrel Public Export Surface Integration Tests', () => {
     expect(typeof SDK.getAlbedo).toBe('function');
     expect(typeof SDK.generateSep7Uri).toBe('function');
     expect(typeof SDK.SEP7_MAX_URI_LENGTH).toBe('number');
+    expect(typeof SDK.signWithFreighter).toBe('function');
+    expect(typeof SDK.signMessageWithFreighter).toBe('function');
+    expect(typeof SDK.signMessageWithKeypair).toBe('function');
 
     expect(SDK.connectWallet).toBe(WalletBarrel.connectWallet);
     expect(SDK.disconnectWallet).toBe(WalletBarrel.disconnectWallet);
@@ -55,6 +61,9 @@ describe('SDK Barrel Public Export Surface Integration Tests', () => {
     expect(SDK.getAlbedo).toBe(WalletBarrel.getAlbedo);
     expect(SDK.generateSep7Uri).toBe(WalletBarrel.generateSep7Uri);
     expect(SDK.SEP7_MAX_URI_LENGTH).toBe(WalletBarrel.SEP7_MAX_URI_LENGTH);
+    expect(SDK.signWithFreighter).toBe(WalletBarrel.signWithFreighter);
+    expect(SDK.signMessageWithFreighter).toBe(WalletBarrel.signMessageWithFreighter);
+    expect(SDK.signMessageWithKeypair).toBe(WalletBarrel.signMessageWithKeypair);
   });
 
   it('makes wallet types nameable from both the package root and the wallet barrel (#439)', () => {
@@ -66,12 +75,15 @@ describe('SDK Barrel Public Export Surface Integration Tests', () => {
       network: 'TESTNET',
     };
     const connBarrel: WalletBarrel.WalletConnection = connRoot;
-    const sep7OptsRoot: SDK.Sep7Options = { msg: 'test' };
+    const sep7OptsRoot: SDK.Sep7Options = { message: 'test' };
     const sep7OptsBarrel: WalletBarrel.Sep7Options = sep7OptsRoot;
+    const signOptsRoot: SDK.SignWithFreighterOptions = { expectedSigner: connRoot.publicKey };
+    const signOptsBarrel: WalletBarrel.SignWithFreighterOptions = signOptsRoot;
     const adapterCheck: SDK.WalletAdapter | null = null as WalletBarrel.WalletAdapter | null;
 
     expect(connBarrel.type).toBe('freighter');
-    expect(sep7OptsBarrel.msg).toBe('test');
+    expect(sep7OptsBarrel.message).toBe('test');
+    expect(signOptsBarrel.expectedSigner).toBe(connRoot.publicKey);
     expect(adapterCheck).toBeNull();
   });
 
