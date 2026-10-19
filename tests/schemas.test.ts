@@ -241,6 +241,24 @@ describe('exported Zod schemas', () => {
           horizonServer: null,
         }).success,
       ).toBe(false);
+      expect(
+        ClientConfigSchema.safeParse({
+          contractId: CONTRACT_ID,
+          rpcServer: [],
+        }).success,
+      ).toBe(false);
+      expect(
+        ClientConfigSchema.safeParse({
+          contractId: CONTRACT_ID,
+          retry: { retries: 1, retryDelayMs: 0, maxRetryDelayMs: 0 },
+        }).success,
+      ).toBe(true);
+      expect(() => new TrustFlowClient({ contractId: CONTRACT_ID, timeoutMs: -100 })).toThrow(
+        expect.objectContaining({ code: 'INVALID_CONFIG' }),
+      );
+      expect(
+        () => new TrustFlowClient({ contractId: CONTRACT_ID, retry: { retries: -1 } }),
+      ).toThrow(expect.objectContaining({ code: 'INVALID_CONFIG' }));
     });
   });
 });

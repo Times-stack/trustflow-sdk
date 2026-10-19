@@ -7,11 +7,11 @@
  * `ClientConfig` surface (`timeoutMs`, `retry`, `accounts`, `rpcServer`,
  * `horizonServer`, `ipfs`, `balanceCache`, `logging`, and network/endpoint
  * fields) with strict `ContractIdSchema` and `StellarAddressSchema` checks so
- * consumers can pre-validate config objects without stripping fields. Note
- * that `new TrustFlowClient(config)` performs lightweight constructor checks
- * (`contractId` non-empty, `rpcUrl`/`horizonUrl` URL syntax, supported
- * `network`, non-empty `networkPassphrase`, and `AccountManager.add` address
- * checks) rather than invoking `ClientConfigSchema.parse` directly.
+ * consumers can pre-validate config objects without stripping fields.
+ * `new TrustFlowClient(config)` supplements its constructor checks (`contractId`
+ * non-empty, `rpcUrl`/`horizonUrl` URL syntax, supported `network`, non-empty
+ * `networkPassphrase`, and `AccountManager.add` address checks) with
+ * `ClientConfigSchema` validation on the remaining configuration fields.
  *
  * ```typescript
  * import { CreateEscrowSchema } from '@trustflow/sdk';
@@ -101,8 +101,8 @@ export const DisputeEscrowSchema = z.object({
 
 const ApiRetryConfigSchema = z.object({
   retries: z.number().int().nonnegative().optional(),
-  retryDelayMs: z.number().positive().optional(),
-  maxRetryDelayMs: z.number().positive().optional(),
+  retryDelayMs: z.number().nonnegative().optional(),
+  maxRetryDelayMs: z.number().nonnegative().optional(),
   jitter: z.boolean().optional(),
 });
 
@@ -154,14 +154,17 @@ export const ClientConfigSchema = z.object({
   timeoutMs: z.number().positive('timeoutMs must be a positive number').optional(),
   accounts: z.array(AddAccountInputSchema).optional(),
   rpcServer: z
-    .custom<rpc.Server>((val) => val !== null && typeof val === 'object', {
+    .custom<rpc.Server>((val) => val !== null && typeof val === 'object' && !Array.isArray(val), {
       message: 'rpcServer must be an object',
     })
     .optional(),
   horizonServer: z
-    .custom<Horizon.Server>((val) => val !== null && typeof val === 'object', {
-      message: 'horizonServer must be an object',
-    })
+    .custom<Horizon.Server>(
+      (val) => val !== null && typeof val === 'object' && !Array.isArray(val),
+      {
+        message: 'horizonServer must be an object',
+      },
+    )
     .optional(),
   logging: z
     .object({
