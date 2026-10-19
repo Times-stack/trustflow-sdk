@@ -177,14 +177,14 @@ export function clearSession(scope?: string): void {
   for (const baseKey of SESSION_BASE_KEYS) {
     storage.remove(scopedKey(baseKey, scope));
   }
-  if (typeof sessionStorage !== 'undefined' && typeof sessionStorage.removeItem === 'function') {
-    try {
+  try {
+    if (typeof sessionStorage !== 'undefined' && typeof sessionStorage?.removeItem === 'function') {
       for (const baseKey of SESSION_BASE_KEYS) {
         sessionStorage.removeItem(scopedKey(baseKey, scope));
       }
-    } catch {
-      // Ignore storage access errors in restricted environments
     }
+  } catch {
+    // Ignore storage access errors in restricted environments
   }
 }
 
@@ -209,23 +209,25 @@ export const SessionManager = {
    * from the configured storage adapter, `localStorage`, and `sessionStorage`.
    */
   clear(scope?: string): void {
-    clearSession();
-    if (scope) {
-      clearSession(scope);
-      trackedScopes.delete(scope);
-    }
-    for (const s of trackedScopes) {
-      clearSession(s);
+    const scopesToClear = [undefined, ...(scope ? [scope] : []), ...trackedScopes];
+    for (const s of scopesToClear) {
+      try {
+        clearSession(s);
+      } catch {
+        // Ignore storage access errors in restricted environments
+      }
     }
     trackedScopes.clear();
+    inMemoryFallback = undefined;
 
-    const webStorages = [
-      typeof localStorage !== 'undefined' ? localStorage : undefined,
-      typeof sessionStorage !== 'undefined' ? sessionStorage : undefined,
+    const webStorageGetters: Array<() => Storage | undefined> = [
+      () => (typeof localStorage !== 'undefined' ? localStorage : undefined),
+      () => (typeof sessionStorage !== 'undefined' ? sessionStorage : undefined),
     ];
-    for (const webStorage of webStorages) {
-      if (!webStorage) continue;
+    for (const getWebStorage of webStorageGetters) {
       try {
+        const webStorage = getWebStorage();
+        if (!webStorage) continue;
         if (typeof webStorage.length === 'number' && typeof webStorage.key === 'function') {
           const keysToRemove: string[] = [];
           for (let i = 0; i < webStorage.length; i++) {

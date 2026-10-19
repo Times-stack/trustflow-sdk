@@ -229,4 +229,43 @@ describe('useWallet', () => {
 
     clearSpy.mockRestore();
   });
+
+  it('completes disconnect and clears remaining storage even if localStorage throws SecurityError (#347)', async () => {
+    mockConnect.mockResolvedValueOnce(connection);
+    mockDisconnect.mockResolvedValueOnce(undefined);
+    localStorage.clear();
+    sessionStorage.clear();
+
+    const { result } = renderHook(() => useWallet());
+    await act(async () => {
+      await result.current.connect();
+    });
+
+    sessionStorage.setItem('trustflow_token', 'session-jwt-token');
+    sessionStorage.setItem('trustflow_nonce', 'session-nonce');
+
+    const origRemoveItem = Storage.prototype.removeItem;
+    const removeSpy = jest.spyOn(Storage.prototype, 'removeItem').mockImplementation(function (
+      this: Storage,
+      key: string,
+    ) {
+      if (this === localStorage) {
+        throw new Error('SecurityError: The operation is insecure.');
+      }
+      origRemoveItem.call(this, key);
+    });
+
+    try {
+      await act(async () => {
+        await result.current.disconnect();
+      });
+
+      expect(result.current.wallet).toBeNull();
+      expect(result.current.isConnected).toBe(false);
+      expect(sessionStorage.getItem('trustflow_token')).toBeNull();
+      expect(sessionStorage.getItem('trustflow_nonce')).toBeNull();
+    } finally {
+      removeSpy.mockRestore();
+    }
+  });
 });
