@@ -144,6 +144,60 @@ describe('contract module', () => {
       expect(result.txHash).toBe('tx_hash');
       expect(signAndSubmit).toHaveBeenCalledWith('xdr_string');
     });
+
+    it('preserves TIMEOUT code on ContractCallResult when RPC call times out (#453)', async () => {
+      const mockServer = {
+        getAccount: jest
+          .fn()
+          .mockResolvedValue({ accountId: () => 'GBM...', sequenceNumber: () => '1' }),
+        simulateTransaction: jest
+          .fn()
+          .mockRejectedValue(TrustFlowError.timedOut(50, 'rpc.simulateTransaction')),
+      };
+      (rpc.Server as jest.Mock).mockImplementation(() => mockServer);
+      (Contract as jest.Mock).mockImplementation(() => ({
+        call: jest.fn().mockReturnValue({}),
+      }));
+
+      const result = await invokeContract(mockClient, 'release', [], 'GBM...', undefined, {
+        retry: { attempts: 1 },
+      });
+      expect(result).toEqual({
+        success: false,
+        code: 'TIMEOUT',
+        error: 'Timed out after 50ms (rpc.simulateTransaction)',
+      });
+    });
+
+    it('preserves ACCOUNT_NOT_FOUND code on ContractCallResult for an unregistered account (#453)', async () => {
+      (mockClient.resolveAccount as jest.Mock).mockImplementationOnce((ref?: string) => {
+        throw TrustFlowError.accountNotFound(ref);
+      });
+
+      const result = await invokeContract(mockClient, 'release', [], 'GBM...', undefined, {
+        account: 'unregistered-account',
+      });
+      expect(result.success).toBe(false);
+      expect(result.code).toBe('ACCOUNT_NOT_FOUND');
+      expect(result.error).toContain('unregistered-account');
+    });
+
+    it('leaves code undefined when a non-TrustFlowError is thrown (#453)', async () => {
+      const mockServer = {
+        getAccount: jest.fn().mockRejectedValue(new Error('unexpected transport error')),
+      };
+      (rpc.Server as jest.Mock).mockImplementation(() => mockServer);
+      (Contract as jest.Mock).mockImplementation(() => ({
+        call: jest.fn().mockReturnValue({}),
+      }));
+
+      const result = await invokeContract(mockClient, 'release', [], 'GBM...', undefined, {
+        retry: { attempts: 1 },
+      });
+      expect(result.success).toBe(false);
+      expect(result.code).toBeUndefined();
+      expect(result.error).toBe('unexpected transport error');
+    });
   });
 
   describe('read.ts', () => {

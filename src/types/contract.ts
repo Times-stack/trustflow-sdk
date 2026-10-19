@@ -1,5 +1,6 @@
 import type { HttpInterceptors } from '../utils/interceptors';
 import type { StellarNetwork } from '../stellar/network';
+import type { TrustFlowErrorCode } from '../errors';
 
 export interface ContractConfig {
   contractId: string;
@@ -29,6 +30,8 @@ export interface ContractCallResult {
   returnValue?: unknown;
   txHash?: string;
   errorCode?: number;
+  /** Typed SDK error code when `success` is false due to a {@link TrustFlowError}. */
+  code?: TrustFlowErrorCode;
   gasUsed?: number;
   /** Error message when `success` is false, describing why the call failed. */
   error?: string;
