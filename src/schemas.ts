@@ -1,10 +1,17 @@
 /**
- * Zod runtime validation schemas for TrustFlow SDK (#45, #214, #233).
+ * Zod runtime validation schemas for TrustFlow SDK (#45, #214, #233, #437).
  *
- * These are the same schemas the SDK uses internally to validate inputs
- * before building contract calls. They are exported from the package root
- * so consumers (including frontend form/validation code) can reuse them
- * directly instead of re-implementing the same rules, e.g.:
+ * The escrow schemas (`CreateEscrowSchema`, `ReleaseEscrowSchema`,
+ * `DisputeEscrowSchema`) mirror the rules the SDK uses internally to validate
+ * inputs before building contract calls. `ClientConfigSchema` covers the full
+ * `ClientConfig` surface (`timeoutMs`, `retry`, `accounts`, `rpcServer`,
+ * `horizonServer`, `ipfs`, `balanceCache`, `logging`, and network/endpoint
+ * fields) with strict `ContractIdSchema` and `StellarAddressSchema` checks so
+ * consumers can pre-validate config objects without stripping fields. Note
+ * that `new TrustFlowClient(config)` performs lightweight constructor checks
+ * (`contractId` non-empty, `rpcUrl`/`horizonUrl` URL syntax, supported
+ * `network`, non-empty `networkPassphrase`, and `AccountManager.add` address
+ * checks) rather than invoking `ClientConfigSchema.parse` directly.
  *
  * ```typescript
  * import { CreateEscrowSchema } from '@trustflow/sdk';
@@ -16,6 +23,7 @@
  * ```
  */
 import { z } from 'zod';
+import type { Horizon, rpc } from '@stellar/stellar-sdk';
 import { TrustFlowError } from './errors';
 import { STELLAR_ADDRESS_RE, CONTRACT_ID_RE } from './utils/validation';
 import { isValidCid } from './storage/cid';
@@ -91,7 +99,28 @@ export const DisputeEscrowSchema = z.object({
 
 // ── Client config ─────────────────────────────────────────────────────────────
 
-/** Validates the config object passed to `new TrustFlowClient(...)`. */
+const ApiRetryConfigSchema = z.object({
+  retries: z.number().int().nonnegative().optional(),
+  retryDelayMs: z.number().positive().optional(),
+  maxRetryDelayMs: z.number().positive().optional(),
+  jitter: z.boolean().optional(),
+});
+
+const AddAccountInputSchema = z.object({
+  address: StellarAddressSchema,
+  id: z.string().min(1).optional(),
+  label: z.string().optional(),
+  apiKey: z.string().optional(),
+  roles: z.array(z.string()).optional(),
+  data: z.record(z.unknown()).optional(),
+  activate: z.boolean().optional(),
+});
+
+/**
+ * Validates the config object passed to `new TrustFlowClient(...)`, covering
+ * all {@link import('./types').ClientConfig} fields including `timeoutMs`,
+ * `retry`, `accounts`, `rpcServer`, and `horizonServer`.
+ */
 export const ClientConfigSchema = z.object({
   network: NetworkSchema.default('TESTNET'),
   contractId: ContractIdSchema,
@@ -114,7 +143,24 @@ export const ClientConfigSchema = z.object({
       apiUrl: z.string().url().optional(),
       apiKey: z.string().optional(),
       gatewayUrl: z.string().url().optional(),
+      fallbackGateways: z.array(z.string().url()).optional(),
+      gateways: z.array(z.string().url()).optional(),
       timeoutMs: z.number().positive().optional(),
+      retry: ApiRetryConfigSchema.optional(),
+      interceptors: z.any().optional(),
+    })
+    .optional(),
+  retry: ApiRetryConfigSchema.optional(),
+  timeoutMs: z.number().positive('timeoutMs must be a positive number').optional(),
+  accounts: z.array(AddAccountInputSchema).optional(),
+  rpcServer: z
+    .custom<rpc.Server>((val) => val !== null && typeof val === 'object', {
+      message: 'rpcServer must be an object',
+    })
+    .optional(),
+  horizonServer: z
+    .custom<Horizon.Server>((val) => val !== null && typeof val === 'object', {
+      message: 'horizonServer must be an object',
     })
     .optional(),
   logging: z
