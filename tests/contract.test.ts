@@ -82,10 +82,14 @@ describe('contract module', () => {
       expect(args.length).toBe(2);
 
       expect(() => buildClaimArgs('', validAddr)).toThrow(TrustFlowError);
-      expect(() => buildClaimArgs('', validAddr)).toThrow(/escrowId/);
+      expect(() => buildClaimArgs('', validAddr)).toThrow(
+        expect.objectContaining({ code: 'VALIDATION_ERROR', field: 'escrowId' }),
+      );
 
       expect(() => buildClaimArgs('escrow1', 'bad-address')).toThrow(TrustFlowError);
-      expect(() => buildClaimArgs('escrow1', 'bad-address')).toThrow(/claimant/);
+      expect(() => buildClaimArgs('escrow1', 'bad-address')).toThrow(
+        expect.objectContaining({ code: 'VALIDATION_ERROR', field: 'claimant' }),
+      );
     });
 
     it('buildFundArgs returns valid arguments and rejects invalid escrowId, funder, or tokenAddress', () => {
@@ -94,18 +98,24 @@ describe('contract module', () => {
       expect(buildFundArgs('escrow1', validAddr, 50_000_000n, validContractAddr).length).toBe(4);
 
       expect(() => buildFundArgs('', validAddr, 50_000_000n)).toThrow(TrustFlowError);
-      expect(() => buildFundArgs('', validAddr, 50_000_000n)).toThrow(/escrowId/);
+      expect(() => buildFundArgs('', validAddr, 50_000_000n)).toThrow(
+        expect.objectContaining({ code: 'VALIDATION_ERROR', field: 'escrowId' }),
+      );
 
       expect(() => buildFundArgs('escrow1', 'bad-address', 50_000_000n)).toThrow(TrustFlowError);
-      expect(() => buildFundArgs('escrow1', 'bad-address', 50_000_000n)).toThrow(/funder/);
+      expect(() => buildFundArgs('escrow1', 'bad-address', 50_000_000n)).toThrow(
+        expect.objectContaining({ code: 'VALIDATION_ERROR', field: 'funder' }),
+      );
 
       expect(() => buildFundArgs('escrow1', validAddr, 50_000_000n, 'bad-token')).toThrow(
         TrustFlowError,
       );
       expect(() => buildFundArgs('escrow1', validAddr, 50_000_000n, 'bad-token')).toThrow(
-        /tokenAddress/,
+        expect.objectContaining({ code: 'VALIDATION_ERROR', field: 'tokenAddress' }),
       );
-      expect(() => buildFundArgs('escrow1', validAddr, 50_000_000n, '')).toThrow(/tokenAddress/);
+      expect(() => buildFundArgs('escrow1', validAddr, 50_000_000n, '')).toThrow(
+        expect.objectContaining({ code: 'VALIDATION_ERROR', field: 'tokenAddress' }),
+      );
     });
 
     it('buildDisputeArgs returns valid arguments', () => {

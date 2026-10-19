@@ -81,10 +81,18 @@ export function buildReleaseArgs(escrowId: string, caller: string): unknown[] {
  * funds to the beneficiary, while claim is the beneficiary pulling funds the
  * contract has already cleared for withdrawal.
  */
+function encodeAddressScVal(address: string, field: string): unknown {
+  try {
+    return new Address(address).toScVal();
+  } catch {
+    throw TrustFlowError.validation(field, `Invalid Stellar address for "${field}": ${address}`);
+  }
+}
+
 export function buildClaimArgs(escrowId: string, claimant: string): unknown[] {
   assertEscrowId(escrowId);
   assertStellarAddress(claimant, 'claimant');
-  return [nativeToScVal(escrowId, { type: 'string' }), new Address(claimant).toScVal()];
+  return [nativeToScVal(escrowId, { type: 'string' }), encodeAddressScVal(claimant, 'claimant')];
 }
 
 /**
@@ -106,7 +114,7 @@ export function buildFundArgs(
   assertStellarAddress(funder, 'funder');
   const args: unknown[] = [
     nativeToScVal(escrowId, { type: 'string' }),
-    new Address(funder).toScVal(),
+    encodeAddressScVal(funder, 'funder'),
     nativeToScVal(amountStroops, { type: 'i128' }),
   ];
   if (tokenAddress !== undefined) {
@@ -116,7 +124,7 @@ export function buildFundArgs(
         `Invalid Stellar address for "tokenAddress": ${tokenAddress}`,
       );
     }
-    args.push(new Address(tokenAddress).toScVal());
+    args.push(encodeAddressScVal(tokenAddress, 'tokenAddress'));
   }
   return args;
 }
