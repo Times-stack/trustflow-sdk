@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Duplicate error code cleanup (#432)
+
+- Issue #432: Removed the duplicate `INVALID_CONTRACT_CALL` member from `TrustFlowErrorCode` and enabled `@typescript-eslint/no-duplicate-type-constituents` in the default ESLint config.
+- Repaired pre-existing WebAuthn, IPFS, and fee-bump type errors so the required `npm run typecheck` and `npm run lint` checks pass.
+
 ### MultiSigConfig integration (#442)
 
 - Issue #442: Established `InitMultiSigParams extends MultiSigConfig`, added `MultiSigEscrowClient.getConfig` to expose operation configuration, and added integration tests.

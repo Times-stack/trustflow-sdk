@@ -7,7 +7,7 @@ import { createApiHttpClient, toApiErrorMessage } from '../utils/http';
 import type { ApiRetryConfig } from '../utils/http';
 import type { HttpInterceptors } from '../utils/interceptors';
 import { TrustFlowError } from '../errors';
-import { createCipheriv, createDecipheriv, randomBytes, createPublicKey } from 'crypto';
+import { createCipheriv, createDecipheriv, randomBytes } from 'crypto';
 
 /** Default upload endpoint — a raw-body IPFS upload API (e.g. web3.storage-compatible). */
 const DEFAULT_IPFS_API_URL = 'https://api.web3.storage/upload';
@@ -259,7 +259,7 @@ export class IPFSStorage {
         tag: tag.toString('base64'),
       };
     } catch (e) {
-      throw TrustFlowError.wrap(e, 'encryption failed');
+      throw TrustFlowError.wrap(e, 'STORAGE_GATEWAY_ERROR');
     }
   }
 
@@ -284,7 +284,7 @@ export class IPFSStorage {
       decipher.setAuthTag(tag);
       return Buffer.concat([decipher.update(data), decipher.final()]);
     } catch (e) {
-      throw TrustFlowError.wrap(e, 'decryption failed — likely invalid key or corrupted data');
+      throw TrustFlowError.wrap(e, 'STORAGE_GATEWAY_ERROR');
     }
   }
 }

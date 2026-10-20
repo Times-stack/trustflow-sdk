@@ -38,11 +38,7 @@ export interface WebAuthnSignatureResponse {
  * Enables passwordless, phishing-resistant authentication using platform authenticators.
  */
 export class WebAuthnManager {
-  private readonly client: TrustFlowClient;
-
-  constructor(client: TrustFlowClient) {
-    this.client = client;
-  }
+  constructor(_client: TrustFlowClient) {}
 
   /**
    * Creates a registration challenge for a new WebAuthn passkey.
@@ -68,6 +64,7 @@ export class WebAuthnManager {
         window.crypto.getRandomValues(challenge);
       } else {
         // Node.js environment
+        // eslint-disable-next-line @typescript-eslint/no-require-imports
         const crypto = require('crypto');
         crypto.randomFillSync(challenge);
       }
@@ -105,7 +102,7 @@ export class WebAuthnManager {
       logger.error('Failed to create WebAuthn registration challenge', { error: e });
       return {
         ok: false,
-        error: TrustFlowError.wrap(e, 'webauthn registration challenge creation failed').message,
+        error: TrustFlowError.wrap(e, 'AUTH_ERROR').message,
       };
     }
   }
@@ -127,6 +124,7 @@ export class WebAuthnManager {
    */
   deriveSmartAccountKeypair(credential: WebAuthnCredentialOptions, userId: string): SDKResult<Keypair> {
     try {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
       const crypto = require('crypto');
 
       // Derive a deterministic seed from credential and user ID
@@ -136,7 +134,7 @@ export class WebAuthnManager {
       const seed = hmac.digest();
 
       // Create a keypair from the derived seed
-      const keypair = Keypair.fromSecret(Buffer.concat([Buffer.from([0]), seed.slice(0, 32)]));
+      const keypair = Keypair.fromRawEd25519Seed(seed.slice(0, 32));
 
       logger.debug('WebAuthn smart account keypair derived', { credentialId: credential.id });
       return {
@@ -147,7 +145,7 @@ export class WebAuthnManager {
       logger.error('Failed to derive WebAuthn smart account keypair', { error: e });
       return {
         ok: false,
-        error: TrustFlowError.wrap(e, 'webauthn keypair derivation failed').message,
+        error: TrustFlowError.wrap(e, 'AUTH_ERROR').message,
       };
     }
   }
@@ -197,7 +195,7 @@ export class WebAuthnManager {
       logger.error('WebAuthn signature verification failed', { error: e });
       return {
         ok: false,
-        error: TrustFlowError.wrap(e, 'webauthn signature verification failed').message,
+        error: TrustFlowError.wrap(e, 'AUTH_ERROR').message,
       };
     }
   }
