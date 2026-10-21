@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### formatBytes units above GB (#564)
+
+- Issue #564: `formatBytes` now supports `TB` and `PB` and clamps the unit index to the bounds of the `sizes` array, so sizes of 1 TiB or more no longer render as `"1 undefined"`. Formatting for `Bytes`/`KB`/`MB`/`GB` is unchanged.
+
 ### Session revocation on wallet disconnect (#347)
 
 - Issue #347: `useWallet().disconnect()` now revokes all persisted auth state. It calls the new `clearAllSessions()`, which removes the unscoped token/address/expiry trio through the active storage adapter and sweeps every `trustflow_`-prefixed key out of `localStorage` and `sessionStorage` — covering account-scoped sessions (`trustflow_token:<scope>`) and legacy keys — so a stored JWT, refresh token, or challenge nonce can no longer outlive the connection it belonged to. The purge runs even when the wallet-level disconnect rejects, so a failing extension can no longer leave credentials behind.
