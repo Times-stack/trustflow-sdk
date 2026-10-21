@@ -226,9 +226,11 @@ monitor.on(name, (e) => void e.data);
 
 The types involved — `MonitorEventName`, `EventHandlerFor<T>` and the
 narrowed event itself (`ParsedEventForType<T>`) — are exported from the package
-root. Untyped events (`escrow_cancelled`, `dispute_resolved`,
-`milestone_completed`) carry `data: Record<string, unknown>`, so treat their
-payload as unverified.
+root. Untyped events (`escrow_funded`, `escrow_cancelled`, `dispute_resolved`)
+carry `data: Record<string, unknown>`, so treat their payload as unverified.
+For these event variants, non-type topics are available as `data.topic1`,
+`data.topic2`, and so on, which `addTopicFilter` uses for positional topic
+matching.
 
 ### Resilient polling (recommended for production)
 

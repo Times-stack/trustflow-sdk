@@ -153,4 +153,33 @@ describe('Event Parsing with real Soroban XDR (#138, #282, #284)', () => {
     await Promise.resolve();
     expect(seen).toEqual(['esc-flow']);
   });
+
+  it('matches topic filters against positional topics on untyped events', async () => {
+    const event = parseEvent(
+      createXdrEvent(
+        'escrow_funded',
+        [xdr.ScVal.scvString('esc-100')],
+        xdr.ScVal.scvVoid(),
+      ),
+    );
+    expect(event).not.toBeNull();
+    if (!event) throw new Error('Expected escrow_funded event to parse');
+
+    const monitor = new EscrowMonitor();
+    const seen: string[] = [];
+    monitor.addTopicFilter({
+      type: 'escrow_funded',
+      topicIndex: 1,
+      value: 'esc-100',
+    });
+    monitor.on('escrow_funded', (received) => {
+      const topic = received.data.topic1;
+      if (typeof topic === 'string') seen.push(topic);
+    });
+
+    monitor.deliver([event]);
+    await Promise.resolve();
+
+    expect(seen).toEqual(['esc-100']);
+  });
 });
