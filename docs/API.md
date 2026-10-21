@@ -404,6 +404,8 @@ const uri = generateSep7Uri(preparedXdr, {
   - Returns `Promise<{ xdr, hash }>`; the `xdr` can be submitted to Horizon as-is
   - Throws `UNAUTHORIZED` when Albedo is not installed, `USER_REJECTED` when the user declines, and `SIGNING_ERROR` for an unsupported network or an envelope that does not verify
 
+- `isWalletRejection(error: unknown)` — Returns whether an unknown error matches common wallet-rejection signals, including provider error codes and user-declined or denied messages. Useful when handling custom `WalletAdapter` implementations; import it from `@trustflow/sdk/wallet`.
+
 ### Types
 
 - `WalletType` — Union of supported types: `'freighter' | 'albedo' | 'xbull' | 'manual'`
