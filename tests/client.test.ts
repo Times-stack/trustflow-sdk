@@ -151,6 +151,22 @@ describe('TrustFlowClient', () => {
 
       expect(loadAccount).toHaveBeenCalledTimes(2);
     });
+
+    it('does not reuse a cached balance from the previous network after switchNetwork', async () => {
+      const client = new TrustFlowClient({
+        contractId: mockContractId,
+        network: 'TESTNET',
+        balanceCache: { ttlMs: 60_000 },
+      });
+      mockBalanceLookup(client, '42.0000000');
+      await client.getBalance(address);
+
+      client.switchNetwork('LOCALNET');
+      const loadAccount = mockBalanceLookup(client, '7.0000000');
+
+      await expect(client.getBalance(address)).resolves.toBe('7.0000000');
+      expect(loadAccount).toHaveBeenCalledTimes(1);
+    });
   });
 
   describe('getNetworkPassphrase', () => {

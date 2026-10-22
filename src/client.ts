@@ -464,6 +464,7 @@ export class TrustFlowClient {
       allowHttp: this.horizonUrl.startsWith('http://'),
     });
     this.sorobanServer = undefined;
+    this.balanceCache?.clear();
     this._connected = false;
   }
 

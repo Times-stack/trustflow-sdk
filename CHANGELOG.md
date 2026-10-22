@@ -9,6 +9,9 @@
 - Preserve caller-owned AbortSignal cancellation when fetchWithTimeout has a deadline.
 - Issue #568 is already fixed on main through the bias-free nonce implementation (#352).
 
+### Balance cache isolation on network switch (#603)
+
+- Issue #603: `TrustFlowClient.switchNetwork()` now clears the balance cache. Cache keys are scoped by account and address but not by network, so a balance cached on one network was returned unchanged after switching to another until its TTL expired.
 
 ### Session revocation on wallet disconnect (#347)
 
