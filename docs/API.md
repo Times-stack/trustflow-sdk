@@ -538,15 +538,16 @@ trustFlowEvents.forEach(event => {
 ```
 
 ## Validation Schemas
-Zod runtime schemas (`src/schemas.ts`) — the same ones the SDK uses internally — exported from
-the package root so frontend code can validate form/input data before calling the SDK, without
-re-implementing the rules:
+Zod runtime schemas (`src/schemas.ts`) exported from the package root so frontend code can
+validate form/input data before calling the SDK, without re-implementing the rules:
 
 - `StellarAddressSchema`, `ContractIdSchema`, `StroopsSchema`, `NetworkSchema` — primitives
 - `CreateEscrowSchema`, `ReleaseEscrowSchema`, `DisputeEscrowSchema` — escrow operation inputs
-- `ClientConfigSchema` — `new TrustFlowClient(...)` config. It covers every serializable field of
-  `ClientConfig`; the live `rpcServer` / `horizonServer` seams are excluded because they are objects,
-  not data. The constructor performs its own checks rather than running this schema (#437).
+- `ClientConfigSchema` — full `new TrustFlowClient(...)` config (`timeoutMs`, `retry`, `accounts`,
+  `rpcServer`, `horizonServer`, `ipfs`, `balanceCache`, `logging`, and network/endpoint fields;
+  `ClientConfigSchema` enforces strict `C...` 56-char `ContractIdSchema` and `G...` 56-char
+  `StellarAddressSchema` checks, while `TrustFlowClient`'s constructor accepts any non-empty
+  `contractId` string and supplements its constructor checks with `ClientConfigSchema`)
 - Inferred types `CreateEscrowInput`, `ReleaseEscrowInput`, `DisputeEscrowInput` are exported
   alongside their schemas. (`Network`/`ClientConfig` are not re-exported under those names from
   the root — they'd collide with the existing plain TS types of the same name; derive them

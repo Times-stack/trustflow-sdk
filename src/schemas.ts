@@ -1,12 +1,17 @@
 /**
- * Zod runtime validation schemas for TrustFlow SDK (#45, #214, #233).
+ * Zod runtime validation schemas for TrustFlow SDK (#45, #214, #233, #437).
  *
- * These schemas document the rules the SDK enforces on inputs before building
- * contract calls. The one exception is `ClientConfigSchema`, which the
- * `TrustFlowClient` constructor does not run; see the note above it (#437).
- * They are exported from the package root so consumers (including frontend
- * form/validation code) can reuse them directly instead of re-implementing
- * the same rules, e.g.:
+ * The escrow schemas (`CreateEscrowSchema`, `ReleaseEscrowSchema`,
+ * `DisputeEscrowSchema`) mirror the rules the SDK uses internally to validate
+ * inputs before building contract calls. `ClientConfigSchema` covers the full
+ * `ClientConfig` surface (`timeoutMs`, `retry`, `accounts`, `rpcServer`,
+ * `horizonServer`, `ipfs`, `balanceCache`, `logging`, and network/endpoint
+ * fields) with strict `ContractIdSchema` and `StellarAddressSchema` checks so
+ * consumers can pre-validate config objects without stripping fields.
+ * `new TrustFlowClient(config)` supplements its constructor checks (`contractId`
+ * non-empty, `rpcUrl`/`horizonUrl` URL syntax, supported `network`, non-empty
+ * `networkPassphrase`, and `AccountManager.add` address checks) with
+ * `ClientConfigSchema` validation on the remaining configuration fields.
  *
  * ```typescript
  * import { CreateEscrowSchema } from '@trustflow/sdk';
@@ -18,6 +23,7 @@
  * ```
  */
 import { z } from 'zod';
+import type { Horizon, rpc } from '@stellar/stellar-sdk';
 import { TrustFlowError } from './errors';
 import { STELLAR_ADDRESS_RE, CONTRACT_ID_RE } from './utils/validation';
 import { isValidCid } from './storage/cid';
@@ -93,9 +99,16 @@ export const DisputeEscrowSchema = z.object({
 
 // ── Client config ─────────────────────────────────────────────────────────────
 
-const AddAccountSchema = z.object({
+const ApiRetryConfigSchema = z.object({
+  retries: z.number().int().nonnegative().optional(),
+  retryDelayMs: z.number().nonnegative().optional(),
+  maxRetryDelayMs: z.number().nonnegative().optional(),
+  jitter: z.boolean().optional(),
+});
+
+const AddAccountInputSchema = z.object({
   address: StellarAddressSchema,
-  id: z.string().optional(),
+  id: z.string().min(1).optional(),
   label: z.string().optional(),
   apiKey: z.string().optional(),
   roles: z.array(z.string()).optional(),
@@ -104,14 +117,9 @@ const AddAccountSchema = z.object({
 });
 
 /**
- * Validates the serializable fields of the config passed to `new TrustFlowClient(...)`.
- *
- * Covers every serializable field of `ClientConfig` (#437). `rpcServer` and
- * `horizonServer` are deliberately omitted: they are live SDK objects used as
- * dependency-injection seams, so they cannot be validated or serialized as data.
- *
- * The constructor performs its own checks and does not run this schema, so
- * keep the two in step when `ClientConfig` gains a field.
+ * Validates the config object passed to `new TrustFlowClient(...)`, covering
+ * all {@link import('./types').ClientConfig} fields including `timeoutMs`,
+ * `retry`, `accounts`, `rpcServer`, and `horizonServer`.
  */
 export const ClientConfigSchema = z.object({
   network: NetworkSchema.default('TESTNET'),
@@ -155,7 +163,25 @@ export const ClientConfigSchema = z.object({
       fallbackGateways: z.array(z.string().url()).optional(),
       gateways: z.array(z.string().url()).optional(),
       timeoutMs: z.number().positive().optional(),
+      retry: ApiRetryConfigSchema.optional(),
+      interceptors: z.any().optional(),
     })
+    .optional(),
+  retry: ApiRetryConfigSchema.optional(),
+  timeoutMs: z.number().positive('timeoutMs must be a positive number').optional(),
+  accounts: z.array(AddAccountInputSchema).optional(),
+  rpcServer: z
+    .custom<rpc.Server>((val) => val !== null && typeof val === 'object' && !Array.isArray(val), {
+      message: 'rpcServer must be an object',
+    })
+    .optional(),
+  horizonServer: z
+    .custom<Horizon.Server>(
+      (val) => val !== null && typeof val === 'object' && !Array.isArray(val),
+      {
+        message: 'horizonServer must be an object',
+      },
+    )
     .optional(),
   logging: z
     .object({

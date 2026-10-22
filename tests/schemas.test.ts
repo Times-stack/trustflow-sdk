@@ -7,6 +7,7 @@ import {
   ReleaseEscrowSchema,
   DisputeEscrowSchema,
   ClientConfigSchema,
+  TrustFlowClient,
 } from '../src';
 
 const ADDR_A = 'G' + 'A'.repeat(55);
@@ -148,33 +149,116 @@ describe('exported Zod schemas', () => {
       expect(result.success).toBe(false);
     });
 
-    it('keeps timeoutMs, retry, accounts and rpcFailover instead of stripping them (#437)', () => {
-      const account = 'GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF';
-      const result = ClientConfigSchema.safeParse({
+    it('preserves timeoutMs, retry, accounts, rpcServer, horizonServer, and ipfs options for TrustFlowClient (#437)', () => {
+      const mockRpcServer = { getHealth: jest.fn() };
+      const mockHorizonServer = { loadAccount: jest.fn() };
+      const rawConfig = {
         contractId: CONTRACT_ID,
-        timeoutMs: 5000,
-        retry: { retries: 2, jitter: false },
-        accounts: [{ address: account, label: 'Alice', roles: ['depositor'] }],
-        rpcFailover: { rpcUrls: ['https://rpc.example.com'] },
+        network: 'TESTNET' as const,
+        timeoutMs: 15_000,
+        retry: {
+          retries: 4,
+          retryDelayMs: 300,
+          maxRetryDelayMs: 3_000,
+          jitter: false,
+        },
+        accounts: [
+          {
+            address: ADDR_A,
+            label: 'Alice',
+            roles: ['depositor'],
+            data: { tier: 'gold' },
+          },
+          {
+            address: ADDR_B,
+            label: 'Bob',
+            roles: ['beneficiary'],
+            activate: false,
+          },
+        ],
+        ipfs: {
+          gatewayUrl: 'https://w3s.link/ipfs',
+          fallbackGateways: ['https://ipfs.io/ipfs'],
+          timeoutMs: 8_000,
+          retry: { retries: 2 },
+        },
+        rpcServer: mockRpcServer as any,
+        horizonServer: mockHorizonServer as any,
+      };
+
+      const parsed = ClientConfigSchema.safeParse(rawConfig);
+      expect(parsed.success).toBe(true);
+      if (!parsed.success) return;
+
+      expect(parsed.data.timeoutMs).toBe(15_000);
+      expect(parsed.data.retry).toEqual({
+        retries: 4,
+        retryDelayMs: 300,
+        maxRetryDelayMs: 3_000,
+        jitter: false,
       });
-      expect(result.success).toBe(true);
-      if (!result.success) return;
-      expect(result.data.timeoutMs).toBe(5000);
-      expect(result.data.retry).toEqual({ retries: 2, jitter: false });
-      expect(result.data.accounts?.[0]).toMatchObject({ address: account, label: 'Alice' });
-      expect(result.data.rpcFailover?.rpcUrls).toEqual(['https://rpc.example.com']);
+      expect(parsed.data.accounts).toHaveLength(2);
+      expect(parsed.data.accounts?.[0]?.address).toBe(ADDR_A);
+      expect(parsed.data.rpcServer).toBe(mockRpcServer);
+      expect(parsed.data.horizonServer).toBe(mockHorizonServer);
+      expect(parsed.data.ipfs?.fallbackGateways).toEqual(['https://ipfs.io/ipfs']);
+
+      const client = new TrustFlowClient(parsed.data);
+      expect(client.timeoutMs).toBe(15_000);
+      expect(client.accounts.list()).toHaveLength(2);
+      expect(client.accounts.active?.address).toBe(ADDR_A);
+      expect(client.getSorobanServer()).toBe(mockRpcServer);
     });
 
-    it('rejects an invalid account address and a non-positive timeoutMs (#437)', () => {
+    it('rejects invalid timeoutMs, retry, accounts address, or non-object servers (#437)', () => {
+      expect(ClientConfigSchema.safeParse({ contractId: CONTRACT_ID, timeoutMs: 0 }).success).toBe(
+        false,
+      );
+      expect(
+        ClientConfigSchema.safeParse({ contractId: CONTRACT_ID, timeoutMs: -100 }).success,
+      ).toBe(false);
+      expect(
+        ClientConfigSchema.safeParse({
+          contractId: CONTRACT_ID,
+          retry: { retries: -1 },
+        }).success,
+      ).toBe(false);
       expect(
         ClientConfigSchema.safeParse({
           contractId: CONTRACT_ID,
           accounts: [{ address: 'not-a-stellar-address' }],
         }).success,
       ).toBe(false);
-      expect(ClientConfigSchema.safeParse({ contractId: CONTRACT_ID, timeoutMs: 0 }).success).toBe(
-        false,
+      expect(
+        ClientConfigSchema.safeParse({
+          contractId: CONTRACT_ID,
+          rpcServer: 'not-an-object',
+        }).success,
+      ).toBe(false);
+      expect(
+        ClientConfigSchema.safeParse({
+          contractId: CONTRACT_ID,
+          horizonServer: null,
+        }).success,
+      ).toBe(false);
+      expect(
+        ClientConfigSchema.safeParse({
+          contractId: CONTRACT_ID,
+          rpcServer: [],
+        }).success,
+      ).toBe(false);
+      expect(
+        ClientConfigSchema.safeParse({
+          contractId: CONTRACT_ID,
+          retry: { retries: 1, retryDelayMs: 0, maxRetryDelayMs: 0 },
+        }).success,
+      ).toBe(true);
+      expect(() => new TrustFlowClient({ contractId: CONTRACT_ID, timeoutMs: -100 })).toThrow(
+        expect.objectContaining({ code: 'INVALID_CONFIG' }),
       );
+      expect(
+        () => new TrustFlowClient({ contractId: CONTRACT_ID, retry: { retries: -1 } }),
+      ).toThrow(expect.objectContaining({ code: 'INVALID_CONFIG' }));
     });
   });
 });
