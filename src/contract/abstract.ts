@@ -1,7 +1,12 @@
 import { xdr } from '@stellar/stellar-sdk';
 import type { TrustFlowClient } from '../client';
 import type { ContractCallResult } from '../types/contract';
-import type { SimulationResult } from './simulate';
+import { TrustFlowError } from '../errors';
+import {
+  parseResourceFootprint,
+  type ResourceFootprintEstimate,
+  type SimulationResult,
+} from './simulate';
 import type { SignAndSubmitFn } from './invoke';
 import { SorobanSpec } from './spec';
 
@@ -127,4 +132,23 @@ export abstract class AbstractContractClient {
     methodName: string,
     args?: Record<string, unknown> | unknown[],
   ): Promise<SimulationResult>;
+
+  /**
+   * Estimates the CPU instructions, RAM footprint, and fees (in stroops and XLM)
+   * required to execute a contract method prior to broadcasting.
+   *
+   * @param methodName - Function name defined in the contract spec
+   * @param args - Arguments as an array or name-value object
+   * @returns Promise resolving to ResourceFootprintEstimate
+   */
+  async estimateResourceFootprint(
+    methodName: string,
+    args?: Record<string, unknown> | unknown[],
+  ): Promise<ResourceFootprintEstimate> {
+    const sim = await this.simulate(methodName, args);
+    if (!sim.success && !sim.needsRestore) {
+      throw new TrustFlowError(sim.error ?? 'Contract simulation failed', 'SIMULATION_ERROR');
+    }
+    return parseResourceFootprint(sim);
+  }
 }

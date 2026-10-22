@@ -1,11 +1,11 @@
 import { xdr, Contract, Account, TransactionBuilder, BASE_FEE } from '@stellar/stellar-sdk';
 import type { TrustFlowClient } from '../client';
 import type { ContractCallResult } from '../types/contract';
-import type { SimulationResult } from './simulate';
-import type { InvokeContractOptions, SignAndSubmitFn } from './invoke';
+import type { ResourceFootprintEstimate, SimulationResult } from './simulate';
+import type { SignAndSubmitFn } from './invoke';
 import { invokeContract } from './invoke';
 import { readContractState } from './read';
-import { simulateContractCall } from './simulate';
+import { estimateResourceFootprint, simulateContractCall } from './simulate';
 import { AbstractContractClient } from './abstract';
 import { SorobanSpec } from './spec';
 
@@ -159,7 +159,37 @@ export class SorobanContractClient extends AbstractContractClient {
 
     return simulateContractCall(this.client, tx.toXDR());
   }
+
+  /**
+   * Simulates execution of a contract method and returns human-readable CPU instructions,
+   * RAM bytes, and fee estimates in stroops and XLM prior to broadcasting.
+   *
+   * @param methodName - Function name defined in contract spec
+   * @param args - Arguments array or object map
+   * @returns Promise resolving to ResourceFootprintEstimate
+   */
+  override async estimateResourceFootprint(
+    methodNameOrXdr: string,
+    args?: Record<string, unknown> | unknown[],
+  ): Promise<ResourceFootprintEstimate> {
+    if (
+      args === undefined &&
+      !this.spec.functions.has(methodNameOrXdr) &&
+      this.spec.functions.size === 0
+    ) {
+      return estimateResourceFootprint(this.client, methodNameOrXdr, {
+        baseFeeStroops: BASE_FEE,
+      });
+    }
+    return super.estimateResourceFootprint(methodNameOrXdr, args ?? []);
+  }
 }
+
+/**
+ * Alias for {@link SorobanContractClient} exposing spec-driven contract invocation,
+ * simulation, and resource footprint estimation.
+ */
+export { SorobanContractClient as TrustFlowContractClient };
 
 /**
  * Creates dynamic type-safe contract client bindings from Soroban spec XDR entries.
