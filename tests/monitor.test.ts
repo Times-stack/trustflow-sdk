@@ -51,6 +51,84 @@ describe('EscrowMonitor', () => {
     expect(seen).toEqual(['escrow_created', 'escrow_created']);
   });
 
+  it('filters matching events for every event type without dropping them', async () => {
+    const events: ParsedTrustFlowEvent[] = [
+      {
+        type: 'escrow_created',
+        contractId: 'CABC',
+        ledger: 1,
+        timestamp: '2024-01-01T00:00:00Z',
+        id: 'created',
+        data: { escrowId: 'esc-1', sender: 'GS', recipient: 'GR', amount: 1n },
+      },
+      {
+        type: 'escrow_funded',
+        contractId: 'CABC',
+        ledger: 1,
+        timestamp: '2024-01-01T00:00:00Z',
+        id: 'funded',
+        data: { topic1: 'esc-1' },
+      },
+      {
+        type: 'escrow_released',
+        contractId: 'CABC',
+        ledger: 1,
+        timestamp: '2024-01-01T00:00:00Z',
+        id: 'released',
+        data: { escrowId: 'esc-1', recipient: 'GR', amount: 1n },
+      },
+      {
+        type: 'escrow_cancelled',
+        contractId: 'CABC',
+        ledger: 1,
+        timestamp: '2024-01-01T00:00:00Z',
+        id: 'cancelled',
+        data: { topic1: 'esc-1' },
+      },
+      {
+        type: 'dispute_raised',
+        contractId: 'CABC',
+        ledger: 1,
+        timestamp: '2024-01-01T00:00:00Z',
+        id: 'raised',
+        data: { escrowId: 'esc-1', raisedBy: 'GS', reason: 'reason' },
+      },
+      {
+        type: 'dispute_resolved',
+        contractId: 'CABC',
+        ledger: 1,
+        timestamp: '2024-01-01T00:00:00Z',
+        id: 'resolved',
+        data: { topic1: 'esc-1' },
+      },
+    ];
+
+    for (const event of events) {
+      const monitor = new EscrowMonitor();
+      const seen: ParsedTrustFlowEvent[] = [];
+      monitor.addTopicFilter({ type: event.type, topicIndex: 1, value: 'esc-1' });
+      monitor.on('*', (received) => seen.push(received));
+
+      monitor.deliver([event]);
+      await Promise.resolve();
+
+      expect(seen).toEqual([event]);
+
+      const nonMatchingMonitor = new EscrowMonitor();
+      const nonMatchingSeen: ParsedTrustFlowEvent[] = [];
+      nonMatchingMonitor.addTopicFilter({
+        type: event.type,
+        topicIndex: 1,
+        value: 'esc-2',
+      });
+      nonMatchingMonitor.on('*', (received) => nonMatchingSeen.push(received));
+      nonMatchingMonitor.deliver([event]);
+      await Promise.resolve();
+
+      expect(nonMatchingSeen).toEqual([]);
+    }
+  });
+
   it('removes handler with off()', () => {
     const monitor = new EscrowMonitor();
     const h = (): void => {};

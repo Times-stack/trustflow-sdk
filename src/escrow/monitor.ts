@@ -331,36 +331,33 @@ export class EscrowMonitor {
     }
     // All filters for this event type must match
     return filtersForType.every((filter) => {
-      // This would require access to raw topics, which we don't have in ParsedTrustFlowEvent
-      // For now, we match based on data properties when available
-      if (event.type === 'escrow_created' && 'data' in event) {
-        const data = event.data as any;
-        if (filter.topicIndex === 1) return data.escrowId === filter.value;
-        if (filter.topicIndex === 2) return data.sender === filter.value;
-        if (filter.topicIndex === 3) return data.recipient === filter.value;
+      if (filter.topicIndex === 0) return event.type === filter.value;
+
+      switch (event.type) {
+        case 'escrow_created':
+          if (filter.topicIndex === 1) return event.data.escrowId === filter.value;
+          if (filter.topicIndex === 2) return event.data.sender === filter.value;
+          if (filter.topicIndex === 3) return event.data.recipient === filter.value;
+          return false;
+        case 'escrow_released':
+          if (filter.topicIndex === 1) return event.data.escrowId === filter.value;
+          if (filter.topicIndex === 2) return event.data.recipient === filter.value;
+          return false;
+        case 'dispute_raised':
+          if (filter.topicIndex === 1) return event.data.escrowId === filter.value;
+          if (filter.topicIndex === 2) return event.data.raisedBy === filter.value;
+          return false;
+        case 'escrow_funded':
+        case 'escrow_cancelled':
+        case 'dispute_resolved': {
+          const topic = event.data[`topic${filter.topicIndex}`];
+          return typeof topic === 'string' && topic === filter.value;
+        }
+        default: {
+          const exhaustiveCheck: never = event;
+          return exhaustiveCheck;
+        }
       }
-      if ((event.type === 'escrow_funded' || event.type === 'escrow_cancelled') && 'data' in event) {
-        const data = event.data as Record<string, unknown>;
-        if (filter.topicIndex === 1) return data.escrowId === filter.value;
-        if (filter.topicIndex === 2) return data.sender === filter.value;
-        if (filter.topicIndex === 3) return data.recipient === filter.value;
-      }
-      if (event.type === 'dispute_resolved' && 'data' in event) {
-        const data = event.data as Record<string, unknown>;
-        if (filter.topicIndex === 1) return data.escrowId === filter.value;
-        if (filter.topicIndex === 2) return data.resolvedBy === filter.value;
-      }
-      if (event.type === 'escrow_released' && 'data' in event) {
-        const data = event.data as any;
-        if (filter.topicIndex === 1) return data.escrowId === filter.value;
-        if (filter.topicIndex === 2) return data.recipient === filter.value;
-      }
-      if (event.type === 'dispute_raised' && 'data' in event) {
-        const data = event.data as any;
-        if (filter.topicIndex === 1) return data.escrowId === filter.value;
-        if (filter.topicIndex === 2) return data.raisedBy === filter.value;
-      }
-      return false;
     });
   }
 
