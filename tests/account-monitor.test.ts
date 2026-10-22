@@ -148,76 +148,134 @@ describe('AccountBalanceMonitor', () => {
     expect(monitor.isRunning()).toBe(false);
   });
 
-  it('never has two balance checks in flight when a poll tick fires before the last one resolves', async () => {
-    const info = {
-      address: 'GBM123',
-      balanceXLM: '50',
-      sequenceNumber: '1',
-      isActive: true,
-    } as AccountInfo;
-    let resolveFirst!: (value: AccountInfo) => void;
-    const mockFetch = jest
-      .fn()
-      .mockImplementationOnce(
-        () =>
-          new Promise<AccountInfo>((resolve) => {
-            resolveFirst = resolve;
-          }),
-      )
-      .mockResolvedValue(info);
+  it('does not overlap fetchFn calls when a poll tick fires before the previous check resolves', async () => {
+    let resolveFirstFetch!: (info: AccountInfo) => void;
+    let inFlightCount = 0;
+    let maxInFlightCount = 0;
 
+    const mockFetch = jest
+      .fn<Promise<AccountInfo>, [string, string]>()
+      .mockImplementationOnce(() => {
+        inFlightCount += 1;
+        maxInFlightCount = Math.max(maxInFlightCount, inFlightCount);
+        return new Promise<AccountInfo>((resolve) => {
+          resolveFirstFetch = (info) => {
+            inFlightCount -= 1;
+            resolve(info);
+          };
+        });
+      })
+      .mockImplementation(async () => {
+        inFlightCount += 1;
+        maxInFlightCount = Math.max(maxInFlightCount, inFlightCount);
+        inFlightCount -= 1;
+        return {
+          address: 'GBM123',
+          balanceXLM: '40',
+          sequenceNumber: '2',
+          isActive: true,
+        };
+      });
+
+    const updates: BalanceUpdate[] = [];
     const monitor = new AccountBalanceMonitor({
       address: 'GBM123',
       pollIntervalMs: 1000,
       fetchFn: mockFetch,
     });
+    monitor.on('balance_update', (u) => {
+      updates.push(u);
+    });
 
     monitor.start();
-    jest.advanceTimersByTime(2000);
     expect(mockFetch).toHaveBeenCalledTimes(1);
 
-    resolveFirst(info);
-    await monitor.checkNow();
+    // Advance past two poll ticks while the first fetchFn is still pending
+    jest.advanceTimersByTime(2500);
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+    expect(maxInFlightCount).toBe(1);
+
+    // Direct checkNow() call also coalesces onto the in-flight check
+    const inFlight = monitor.checkNow();
     expect(mockFetch).toHaveBeenCalledTimes(1);
 
+    // Resolve the first fetchFn and wait for the coalesced check to complete
+    resolveFirstFetch({
+      address: 'GBM123',
+      balanceXLM: '50',
+      sequenceNumber: '1',
+      isActive: true,
+    });
+    await inFlight;
+
+    expect(updates).toHaveLength(1);
+    expect(updates[0].balanceXLM).toBe('50');
+
+    // Subsequent poll tick after completion should trigger a new fetchFn call
+    jest.advanceTimersByTime(1000);
     await monitor.checkNow();
+
     expect(mockFetch).toHaveBeenCalledTimes(2);
+    expect(maxInFlightCount).toBe(1);
+    expect(updates).toHaveLength(2);
+    expect(updates[1].balanceXLM).toBe('40');
+    expect(updates[1].previousBalanceXLM).toBe('50');
 
     monitor.stop();
   });
 
-  it('aborts a hung webhook POST after webhookTimeoutMs without blocking the check', async () => {
-    jest.useRealTimers();
+  it('aborts a hung webhook POST after webhookTimeoutMs and does not block the monitor', async () => {
     const originalFetch = global.fetch;
-    const hangingFetch = jest.fn(
-      (_url: string, init?: RequestInit) =>
-        new Promise((_resolve, reject) => {
-          init?.signal?.addEventListener('abort', () => reject(new Error('aborted')));
-        }),
-    );
-    global.fetch = hangingFetch as any;
+    let aborted = false;
+
+    const mockGlobalFetch = jest.fn().mockImplementation((_url: string, init?: RequestInit) => {
+      return new Promise((_resolve, reject) => {
+        const signal = init?.signal;
+        if (signal) {
+          signal.addEventListener('abort', () => {
+            aborted = true;
+            reject(new Error('Aborted'));
+          });
+        }
+      });
+    });
+    global.fetch = mockGlobalFetch as any;
+
+    const mockFetch = jest.fn().mockResolvedValue({
+      address: 'GBM123',
+      balanceXLM: '2.0',
+      sequenceNumber: '12345',
+      isActive: true,
+    } as AccountInfo);
 
     const monitor = new AccountBalanceMonitor({
       address: 'GBM123',
       minBalanceXLM: 10,
-      webhookUrl: 'https://alerts.example.com/webhook',
-      webhookTimeoutMs: 20,
-      fetchFn: jest.fn().mockResolvedValue({
-        address: 'GBM123',
-        balanceXLM: '2.5',
-        sequenceNumber: '1',
-        isActive: true,
-      } as AccountInfo),
+      webhookUrl: 'https://alerts.example.com/hung-webhook',
+      webhookTimeoutMs: 500,
+      fetchFn: mockFetch,
     });
 
-    try {
-      await expect(monitor.checkNow()).resolves.toMatchObject({ balanceXLM: '2.5' });
-      expect(hangingFetch).toHaveBeenCalledWith(
-        'https://alerts.example.com/webhook',
-        expect.objectContaining({ method: 'POST', signal: expect.anything() }),
-      );
-    } finally {
-      global.fetch = originalFetch;
-    }
+    const checkPromise = monitor.checkNow();
+    await Promise.resolve();
+
+    expect(mockGlobalFetch).toHaveBeenCalledTimes(1);
+    expect(aborted).toBe(false);
+
+    // Advance past webhookTimeoutMs so fetchWithTimeout aborts the hung webhook
+    jest.advanceTimersByTime(500);
+
+    const result = await checkPromise;
+    expect(aborted).toBe(true);
+    expect(result).not.toBeNull();
+    expect(result?.balanceXLM).toBe('2.0');
+
+    // Verify the monitor is no longer blocked and can execute another checkNow()
+    mockGlobalFetch.mockResolvedValueOnce({ ok: true });
+    const secondResult = await monitor.checkNow();
+    expect(secondResult?.balanceXLM).toBe('2.0');
+    expect(mockFetch).toHaveBeenCalledTimes(2);
+
+    global.fetch = originalFetch;
   });
 });

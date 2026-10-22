@@ -19,7 +19,7 @@ export interface AccountMonitorConfig {
   webhookUrl?: string;
   /** Optional HTTP headers to include with webhook POST requests (e.g. auth headers). */
   webhookHeaders?: Record<string, string>;
-  /** Timeout in milliseconds for each webhook POST. Defaults to 10,000ms. */
+  /** Optional timeout in milliseconds for webhook POST requests. Defaults to 10,000ms. */
   webhookTimeoutMs?: number;
   /** Optional custom account fetch function for testing or custom RPC endpoints. */
   fetchFn?: (address: string, network: StellarNetwork) => Promise<AccountInfo>;
@@ -68,8 +68,7 @@ export class AccountBalanceMonitor {
   private timer?: ReturnType<typeof setInterval>;
   private running = false;
   private lastBalance?: string;
-  /** The balance check currently awaiting `fetchFn`, shared by overlapping callers. */
-  private pendingCheck?: Promise<BalanceUpdate | null>;
+  private inFlightCheck: Promise<BalanceUpdate | null> | null = null;
 
   private lowBalanceHandlers = new Set<AccountMonitorEventHandler<LowBalanceAlert>>();
   private updateHandlers = new Set<AccountMonitorEventHandler<BalanceUpdate>>();
@@ -157,21 +156,26 @@ export class AccountBalanceMonitor {
 
   /**
    * Immediately triggers a single balance check cycle.
-   *
-   * If a check is already in flight (a slow poll still waiting on `fetchFn`),
-   * this returns that check's result instead of starting another, so the monitor
-   * never has more than one `fetchFn` call outstanding.
+   * Coalesces concurrent calls so only one balance check is in flight at a time.
    */
-  checkNow(): Promise<BalanceUpdate | null> {
-    if (!this.pendingCheck) {
-      this.pendingCheck = this.runCheck().finally(() => {
-        this.pendingCheck = undefined;
-      });
+  async checkNow(): Promise<BalanceUpdate | null> {
+    if (this.inFlightCheck) {
+      return this.inFlightCheck;
     }
-    return this.pendingCheck;
+
+    const checkPromise = (async () => {
+      try {
+        return await this.performCheck();
+      } finally {
+        this.inFlightCheck = null;
+      }
+    })();
+
+    this.inFlightCheck = checkPromise;
+    return checkPromise;
   }
 
-  private async runCheck(): Promise<BalanceUpdate | null> {
+  private async performCheck(): Promise<BalanceUpdate | null> {
     try {
       const info = await this.fetchFn(this.address, this.network);
       const prev = this.lastBalance;
@@ -248,7 +252,7 @@ export class AccountBalanceMonitor {
             }),
           },
           this.webhookTimeoutMs,
-          'monitor.webhook',
+          'sendWebhook',
         );
       }
     } catch (webhookErr) {
