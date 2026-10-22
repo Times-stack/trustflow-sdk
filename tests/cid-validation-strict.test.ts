@@ -109,6 +109,89 @@ describe('Strict CIDv0 and CIDv1 validation - Issue #349', () => {
       const corrupt = 'bafy' + 'a'.repeat(55);
       expect(isValidCid(corrupt)).toBe(false);
     });
+
+    it('rejects CIDv1 base58btc strings with garbage multicodec/multihash payloads (#445)', () => {
+      // 41 bytes [0x01, 0xFF, ..., 0xFF] encoded in base58btc with 'z' prefix
+      const garbageBase58 = 'zSSX8YzB3JHrjo6vdi3AMoi7zpc8f6DcGxmYpb6oWXDAsGJ2sQSQ7UGE';
+      expect(isValidCid(garbageBase58)).toBe(false);
+      expect(validateCID(garbageBase58)).toBe(false);
+      expect(getCidVersion(garbageBase58)).toBeNull();
+    });
+
+    it('enforces multicodec/multihash structure across fuzz-generated base58btc payloads (#445)', () => {
+      const alphabet = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
+      const encodeBase58 = (bytes: Uint8Array): string => {
+        const digits = [0];
+        for (let i = 0; i < bytes.length; i++) {
+          let carry = bytes[i];
+          for (let j = 0; j < digits.length; j++) {
+            carry += digits[j] << 8;
+            digits[j] = carry % 58;
+            carry = (carry / 58) | 0;
+          }
+          while (carry > 0) {
+            digits.push(carry % 58);
+            carry = (carry / 58) | 0;
+          }
+        }
+        let leadingOnes = '';
+        for (let i = 0; i < bytes.length && bytes[i] === 0; i++) {
+          leadingOnes += '1';
+        }
+        return leadingOnes + digits.reverse().map((d) => alphabet[d]).join('');
+      };
+
+      const isStructurallyConsistentV1 = (bytes: Uint8Array): boolean => {
+        if (bytes.length < 4 || bytes[0] !== 0x01) return false;
+        let offset = 1;
+        while (offset < bytes.length && (bytes[offset] & 0x80) !== 0) {
+          offset++;
+        }
+        offset++;
+        if (offset >= bytes.length - 2) return false;
+        const hashFunc = bytes[offset];
+        const hashLen = bytes[offset + 1];
+        const remaining = bytes.length - (offset + 2);
+        if (hashFunc === 0x12 && hashLen !== 32) return false;
+        return remaining === hashLen;
+      };
+
+      // Valid constructed sha2-256 CIDv1 (version 0x01, raw codec 0x55, sha2-256 0x12, len 0x20, 32 digest bytes)
+      const validBytes = new Uint8Array(36);
+      validBytes[0] = 0x01;
+      validBytes[1] = 0x55;
+      validBytes[2] = 0x12;
+      validBytes[3] = 0x20;
+      for (let i = 4; i < 36; i++) validBytes[i] = i;
+      expect(isValidCid('z' + encodeBase58(validBytes))).toBe(true);
+
+      // Deterministic PRNG (xorshift32) for reproducible fuzzing of post-version-byte payloads
+      let seed = 0xdeadbeef;
+      const nextByte = (): number => {
+        seed ^= seed << 13;
+        seed ^= seed >>> 17;
+        seed ^= seed << 5;
+        return (seed >>> 0) & 0xff;
+      };
+
+      let rejectedCount = 0;
+      for (let run = 0; run < 200; run++) {
+        const len = 32 + (nextByte() % 16); // 32..47 bytes so base58 string >= 40 chars
+        const payload = new Uint8Array(len);
+        payload[0] = 0x01;
+        for (let i = 1; i < len; i++) {
+          payload[i] = nextByte();
+        }
+        const candidate = 'z' + encodeBase58(payload);
+        if (candidate.length < 40) continue;
+
+        const expected = isStructurallyConsistentV1(payload);
+        expect(isValidCid(candidate)).toBe(expected);
+        if (!expected) rejectedCount++;
+      }
+
+      expect(rejectedCount).toBeGreaterThan(150);
+    });
   });
 
   describe('Security and edge cases', () => {
