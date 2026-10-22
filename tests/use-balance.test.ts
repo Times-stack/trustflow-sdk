@@ -40,7 +40,9 @@ describe('useBalance', () => {
   });
 
   it('refetches when the address changes', async () => {
-    const getBalance = jest.fn().mockImplementation(async (address: string) => `${address}-balance`);
+    const getBalance = jest
+      .fn()
+      .mockImplementation(async (address: string) => `${address}-balance`);
     const client = makeClient(getBalance);
     const { result, rerender } = renderHook(({ address }) => useBalance(client, address), {
       initialProps: { address: 'GA' as string | null },
@@ -164,5 +166,57 @@ describe('useBalance', () => {
     await Promise.resolve();
 
     expect(result.current.error).toBeNull();
+  });
+
+  it('resets balance to null and sets loading to true immediately when address changes (#346)', async () => {
+    let resolveSecond: (value: string) => void = () => undefined;
+    const getBalance = jest
+      .fn()
+      .mockResolvedValueOnce('100.0000000')
+      .mockImplementationOnce(
+        () =>
+          new Promise<string>((resolve) => {
+            resolveSecond = resolve;
+          }),
+      );
+    const client = makeClient(getBalance);
+    const { result, rerender } = renderHook(({ address }) => useBalance(client, address), {
+      initialProps: { address: 'GA' as string | null },
+    });
+
+    await waitFor(() => expect(result.current.balance).toBe('100.0000000'));
+    expect(result.current.loading).toBe(false);
+
+    rerender({ address: 'GB' });
+
+    expect(result.current.balance).toBeNull();
+    expect(result.current.loading).toBe(true);
+    expect(result.current.error).toBeNull();
+
+    resolveSecond('250.0000000');
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.balance).toBe('250.0000000');
+  });
+
+  it('clears previous error and aborts in-flight controller on address switch (#346)', async () => {
+    const abortSpy = jest.spyOn(AbortController.prototype, 'abort');
+    const getBalance = jest
+      .fn()
+      .mockRejectedValueOnce(new Error('first failed'))
+      .mockResolvedValueOnce('42.0000000');
+    const client = makeClient(getBalance);
+    const { result, rerender } = renderHook(({ address }) => useBalance(client, address), {
+      initialProps: { address: 'GA' as string | null },
+    });
+
+    await waitFor(() => expect(result.current.error).toBe('first failed'));
+
+    rerender({ address: 'GB' });
+    expect(abortSpy).toHaveBeenCalledTimes(1);
+    expect(result.current.error).toBeNull();
+
+    await waitFor(() => expect(result.current.balance).toBe('42.0000000'));
+    expect(result.current.error).toBeNull();
+    abortSpy.mockRestore();
   });
 });

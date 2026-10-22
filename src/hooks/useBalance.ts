@@ -15,24 +15,35 @@ export function useBalance(client: TrustFlowClient, address: string | null) {
     // Drop the previous account's result so it cannot show while the new one loads (#346).
     setSettled(null);
     if (!address) {
+      setBalance(null);
+      setError(null);
+      setLoading(false);
       return;
     }
-    // Aborting on cleanup makes the response for a previous address a no-op, so an
-    // out-of-order response can never overwrite the current account's balance.
+    let cancelled = false;
     const controller = new AbortController();
+    setBalance(null);
+    setError(null);
+    setLoading(true);
     client
       .getBalance(address)
       .then((b) => {
-        if (!controller.signal.aborted) {
-          setSettled({ address, balance: b, error: null });
+        if (!cancelled && !controller.signal.aborted) {
+          setBalance(b);
         }
       })
       .catch((e) => {
-        if (!controller.signal.aborted) {
-          setSettled({ address, balance: null, error: e.message });
+        if (!cancelled && !controller.signal.aborted) {
+          setError(e instanceof Error ? e.message : String(e));
+        }
+      })
+      .finally(() => {
+        if (!cancelled && !controller.signal.aborted) {
+          setLoading(false);
         }
       });
     return () => {
+      cancelled = true;
       controller.abort();
     };
   }, [client, address]);
