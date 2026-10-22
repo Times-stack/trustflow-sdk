@@ -2,6 +2,7 @@ export { useWallet } from './useWallet';
 export { useBalance } from './useBalance';
 export { useTransaction } from './useTransaction';
 export { useEscrow } from './useEscrow';
+export type { OptimisticOptions, CreateEscrowOptions, ReleaseEscrowOptions } from './useEscrow';
 export { useProfile } from './useProfile';
 export { useJuror } from './useJuror';
 

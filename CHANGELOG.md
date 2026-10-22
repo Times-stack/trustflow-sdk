@@ -8,7 +8,17 @@
 - Support escrow funded/cancelled and dispute resolved event topic filters.
 - Preserve caller-owned AbortSignal cancellation when fetchWithTimeout has a deadline.
 - Issue #568 is already fixed on main through the bias-free nonce implementation (#352).
+### Mock escrow lookup no longer returns another escrow (#609)
 
+- Issue #609: `createMockSorobanServer`'s pre-canned `escrows` lookup now returns only an exact id match. Previously, an unknown id fell back to the first configured escrow, so negative tests against the mock received a real escrow's data. Unknown ids now get the default return value.
+
+### Restore useEscrow optimistic updates (#604)
+
+- Issue #604: Restored the opt-in `optimistic` option for `useEscrow().create` and `useEscrow().release`, which PR #481 dropped when it added `cancel`/`dispute`/`refresh`. Pass `{ optimistic: true, onOptimisticRollback? }` to show a pending escrow immediately and roll back to the previous state on failure. The new option types `OptimisticOptions`, `CreateEscrowOptions` and `ReleaseEscrowOptions` are exported from `@trustflow/sdk/react`.
+
+### Balance cache isolation on network switch (#603)
+
+- Issue #603: `TrustFlowClient.switchNetwork()` now clears the balance cache. Cache keys are scoped by account and address but not by network, so a balance cached on one network was returned unchanged after switching to another until its TTL expired.
 
 ### Session revocation on wallet disconnect (#347)
 

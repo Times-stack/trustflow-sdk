@@ -320,11 +320,10 @@ export function createMockSorobanServer(options: MockSorobanServerOptions = {}):
           escrowsMap.size > 0 &&
           (invocation.functionName.includes('escrow') || invocation.functionName.includes('get'))
         ) {
+          // Only an exact id match is returned; an unknown id falls through to the
+          // default return value rather than another configured escrow (Issue #609).
           const firstArg = invocation.args?.[0];
-          const match =
-            escrowsMap.get(firstArg) ??
-            escrowsMap.get(String(firstArg)) ??
-            escrowsMap.values().next().value;
+          const match = escrowsMap.get(firstArg) ?? escrowsMap.get(String(firstArg));
           if (match !== undefined) {
             retval = toScValHelper(match);
           }
