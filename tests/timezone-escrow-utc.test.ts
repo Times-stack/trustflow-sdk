@@ -92,16 +92,22 @@ describe('Timezone and UTC deadline handling - Issue #358', () => {
     it('respects minBufferSeconds option', () => {
       const soonDate = new Date(Date.now() + 30 * 1000); // 30s in future
       // Requires at least 60s in the future
-      expect(() => validateFutureExpiration(soonDate, 'deadline', { minBufferSeconds: 60 })).toThrow(
-        TrustFlowError,
-      );
+      expect(() =>
+        validateFutureExpiration(soonDate, 'deadline', { minBufferSeconds: 60 }),
+      ).toThrow(TrustFlowError);
 
       // Requires at least 10s in the future
-      expect(() => validateFutureExpiration(soonDate, 'deadline', { minBufferSeconds: 10 })).not.toThrow();
+      expect(() =>
+        validateFutureExpiration(soonDate, 'deadline', { minBufferSeconds: 10 }),
+      ).not.toThrow();
     });
   });
 
   describe('normalizeMilestoneExpiration', () => {
+    function expectType<Expected>(_value: Expected): void {
+      // Compile-time type assertion helper
+    }
+
     it('normalizes array of milestone deadlines and ensures chronological order', () => {
       const now = Date.now();
       const m1Date = new Date(now + 100000);
@@ -113,8 +119,38 @@ describe('Timezone and UTC deadline handling - Issue #358', () => {
       ];
 
       const normalized = normalizeMilestoneExpiration(milestones);
+      expectType<Array<(typeof milestones)[number] & { deadline: number }>>(normalized);
+      expectType<number>(normalized[0].deadline);
       expect(normalized[0].deadline).toBe(Math.floor(m1Date.getTime() / 1000));
       expect(normalized[1].deadline).toBe(Math.floor(m2Date.getTime() / 1000));
+    });
+
+    it('normalizes a scalar Date, number, or ISO string and returns a typed number', () => {
+      const futureDate = new Date(Date.now() + 120000);
+      const normalizedScalar = normalizeMilestoneExpiration(futureDate);
+      expectType<number>(normalizedScalar);
+      expect(normalizedScalar).toBe(Math.floor(futureDate.getTime() / 1000));
+    });
+
+    it('preserves narrowed array return type when an explicit milestone type argument is provided', () => {
+      interface CustomMilestone {
+        id: string;
+        deadline?: Date | number | string;
+      }
+      const futureDate = new Date(Date.now() + 120000);
+      const customMilestones: CustomMilestone[] = [{ id: 'm1', deadline: futureDate }];
+      const normalized = normalizeMilestoneExpiration<CustomMilestone>(customMilestones);
+      expectType<Array<CustomMilestone & { deadline: number }>>(normalized);
+      expect(normalized[0].id).toBe('m1');
+      expect(normalized[0].deadline).toBe(Math.floor(futureDate.getTime() / 1000));
+    });
+
+    it('distributes return type cleanly over union inputs (Date | Milestone[])', () => {
+      const futureDate = new Date(Date.now() + 120000);
+      const unionInput: Date | Array<{ title: string; deadline: Date }> = futureDate;
+      const result = normalizeMilestoneExpiration(unionInput);
+      expectType<number | Array<{ title: string; deadline: Date } & { deadline: number }>>(result);
+      expect(result).toBe(Math.floor(futureDate.getTime() / 1000));
     });
 
     it('rejects unordered milestone deadlines with INVALID_EXPIRATION', () => {
