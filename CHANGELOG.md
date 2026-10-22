@@ -2,9 +2,9 @@
 
 ## [Unreleased]
 
-### formatBytes units above GB (#564)
+### Wallet rejection helper export (#567)
 
-- Issue #564: `formatBytes` now supports `TB` and `PB` and clamps the unit index to the bounds of the `sizes` array, so sizes of 1 TiB or more no longer render as `"1 undefined"`. Formatting for `Bytes`/`KB`/`MB`/`GB` is unchanged.
+- Issue #567: Exported `isWalletRejection` from `@trustflow/sdk/wallet`, allowing custom wallet adapters to reuse the SDK's existing rejection-classification logic.
 
 ### Session revocation on wallet disconnect (#347)
 
