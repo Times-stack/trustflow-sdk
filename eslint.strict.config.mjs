@@ -26,6 +26,7 @@ export default [
       ...tsPlugin.configs.strict.rules,
       ...prettierConfig.rules,
       'prettier/prettier': 'error',
+      '@typescript-eslint/no-duplicate-type-constituents': 'error',
       '@typescript-eslint/no-explicit-any': 'error',
       '@typescript-eslint/no-unused-vars': [
         'error',
