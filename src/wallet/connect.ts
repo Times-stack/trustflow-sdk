@@ -11,6 +11,22 @@ function normalizeAlbedoNetwork(name: string): string {
 }
 
 /**
+ * Normalizes wallet-reported network identifiers to the SDK's canonical naming.
+ * Wallets such as Freighter and Albedo report the public network as `'PUBLIC'`,
+ * `'public'`, or `'pubnet'`, whereas the SDK uses `'MAINNET'`.
+ */
+export function normalizeWalletNetwork(network?: string | null): string {
+  if (!network || typeof network !== 'string') {
+    return 'TESTNET';
+  }
+  const upper = network.trim().toUpperCase();
+  if (!upper) {
+    return 'TESTNET';
+  }
+  return upper === 'PUBLIC' || upper === 'PUBNET' ? 'MAINNET' : upper;
+}
+
+/**
  * Attempts to establish a connection with the specified Stellar wallet.
  * If the user rejects the connection dialog, a retryable TrustFlowError with
  * code 'USER_REJECTED' is thrown, leaving the connection state clean for subsequent attempts.
@@ -27,7 +43,7 @@ export async function connectWallet(type: WalletType = 'freighter'): Promise<Wal
         throw TrustFlowError.userRejected('User rejected Freighter connection');
       }
       const network = await freighter.getNetwork();
-      return { type: 'freighter', publicKey, network: network || 'TESTNET' };
+      return { type: 'freighter', publicKey, network: normalizeWalletNetwork(network) };
     } catch (e: unknown) {
       if (isWalletRejection(e)) {
         throw TrustFlowError.userRejected(
@@ -50,9 +66,19 @@ export async function connectWallet(type: WalletType = 'freighter'): Promise<Wal
       if (!res?.pubkey) {
         throw TrustFlowError.userRejected('User rejected Albedo connection');
       }
-      // Same fallback as the Freighter path when the wallet does not report a network.
-      const network = res.network ? normalizeAlbedoNetwork(res.network) : 'TESTNET';
-      return { type: 'albedo', publicKey: res.pubkey, network };
+      let rawNetwork: string | undefined = res.network;
+      if (rawNetwork === undefined && typeof albedo.getNetwork === 'function') {
+        try {
+          rawNetwork = await albedo.getNetwork();
+        } catch {
+          rawNetwork = undefined;
+        }
+      }
+      return {
+        type: 'albedo',
+        publicKey: res.pubkey,
+        network: normalizeWalletNetwork(rawNetwork),
+      };
     } catch (e: unknown) {
       if (isWalletRejection(e)) {
         throw TrustFlowError.userRejected(
