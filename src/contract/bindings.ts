@@ -2,7 +2,7 @@ import { xdr, Contract, Account, TransactionBuilder, BASE_FEE } from '@stellar/s
 import type { TrustFlowClient } from '../client';
 import type { ContractCallResult } from '../types/contract';
 import type { SimulationResult } from './simulate';
-import type { SignAndSubmitFn } from './invoke';
+import type { InvokeContractOptions, SignAndSubmitFn } from './invoke';
 import { invokeContract } from './invoke';
 import { readContractState } from './read';
 import { simulateContractCall } from './simulate';
@@ -32,8 +32,9 @@ export class SorobanContractClient extends AbstractContractClient {
         args: Record<string, unknown> | unknown[],
         caller: string,
         signAndSubmit?: SignAndSubmitFn,
+        options?: InvokeContractOptions,
       ) => {
-        return this.invoke(fnName, args, caller, signAndSubmit);
+        return this.invoke(fnName, args, caller, signAndSubmit, options);
       };
 
       const readFn = async (args?: Record<string, unknown> | unknown[]) => {
@@ -74,15 +75,24 @@ export class SorobanContractClient extends AbstractContractClient {
    * @param args - Positional arguments array or named parameter object map
    * @param caller - Address of the caller initiating the transaction
    * @param signAndSubmit - Optional callback to sign and submit transaction XDR
+   * @param options - Optional per-call account, retry, timeout, and resource-fee overrides
    */
   async invoke<T = unknown>(
     methodName: string,
     args: Record<string, unknown> | unknown[],
     caller: string,
     signAndSubmit?: SignAndSubmitFn,
+    options?: InvokeContractOptions,
   ): Promise<ContractCallResult & { result?: T }> {
     const scVals = this.encodeArgs(methodName, args);
-    const result = await invokeContract(this.client, methodName, scVals, caller, signAndSubmit);
+    const result = await invokeContract(
+      this.client,
+      methodName,
+      scVals,
+      caller,
+      signAndSubmit,
+      options,
+    );
     let decoded: T | undefined = undefined;
     if (result.success && result.returnValue) {
       decoded = this.decodeReturnValue(methodName, result.returnValue as xdr.ScVal) as T;

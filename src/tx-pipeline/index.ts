@@ -1,4 +1,4 @@
-export { TransactionPipeline } from './pipeline';
+export { TransactionPipeline, DEFAULT_RESOURCE_FEE_MULTIPLIER, padResourceFee } from './pipeline';
 export type {
   AssembleParams,
   EstimateFeeOptions,

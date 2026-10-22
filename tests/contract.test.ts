@@ -252,60 +252,95 @@ describe('contract module', () => {
       expect(signAndSubmit).toHaveBeenCalledWith('xdr_string');
     });
 
-    it('pads the simulated resource fee by 1.1x before assembling for signing (#438)', async () => {
+    it('applies default 1.1x resource-fee safety margin before assembleTransaction (#438)', async () => {
       (rpc.Api.isSimulationError as unknown as jest.Mock).mockReturnValue(false);
       const setResourceFee = jest.fn();
+      const mockTxData = { setResourceFee };
       const mockServer = {
         getAccount: jest
           .fn()
           .mockResolvedValue({ accountId: () => 'GBM...', sequenceNumber: () => '1' }),
         simulateTransaction: jest.fn().mockResolvedValue({
+          minResourceFee: '1005',
+          transactionData: mockTxData,
           result: { retval: 'value' },
-          minResourceFee: '1000',
-          transactionData: { setResourceFee },
         }),
       };
       (rpc.Server as jest.Mock).mockImplementation(() => mockServer);
-      (Contract as jest.Mock).mockImplementation(() => ({ call: jest.fn().mockReturnValue({}) }));
+      (Contract as jest.Mock).mockImplementation(() => ({
+        call: jest.fn().mockReturnValue({}),
+      }));
       (rpc.assembleTransaction as jest.Mock).mockReturnValue({
         build: jest.fn().mockReturnValue({ toXDR: () => 'xdr_string' }),
       });
 
-      await invokeContract(mockClient, 'release', [], 'GBM...', jest.fn().mockResolvedValue('h'));
+      const signAndSubmit = jest.fn().mockResolvedValue('tx_hash');
+      const result = await invokeContract(mockClient, 'release', [], 'GBM...', signAndSubmit);
 
-      expect(setResourceFee).toHaveBeenCalledWith('1100');
+      expect(result.success).toBe(true);
+      // Math.ceil(1005 * 1.1) = 1106 (not raw '1005')
+      expect(setResourceFee).toHaveBeenCalledWith('1106');
       expect(rpc.assembleTransaction).toHaveBeenCalledWith(
-        expect.anything(),
-        expect.objectContaining({ minResourceFee: '1100' }),
+        'mock_tx',
+        expect.objectContaining({
+          minResourceFee: '1106',
+          transactionData: mockTxData,
+        }),
       );
     });
 
-    it('honours a per-call resourceFeeMultiplier (#438)', async () => {
+    it('honors custom resourceFeeMultiplier in InvokeContractOptions (#438)', async () => {
       (rpc.Api.isSimulationError as unknown as jest.Mock).mockReturnValue(false);
       const mockServer = {
         getAccount: jest
           .fn()
           .mockResolvedValue({ accountId: () => 'GBM...', sequenceNumber: () => '1' }),
         simulateTransaction: jest.fn().mockResolvedValue({
+          minResourceFee: '10000',
           result: { retval: 'value' },
-          minResourceFee: '1000',
-          transactionData: { setResourceFee: jest.fn() },
         }),
       };
       (rpc.Server as jest.Mock).mockImplementation(() => mockServer);
-      (Contract as jest.Mock).mockImplementation(() => ({ call: jest.fn().mockReturnValue({}) }));
+      (Contract as jest.Mock).mockImplementation(() => ({
+        call: jest.fn().mockReturnValue({}),
+      }));
       (rpc.assembleTransaction as jest.Mock).mockReturnValue({
         build: jest.fn().mockReturnValue({ toXDR: () => 'xdr_string' }),
       });
 
-      await invokeContract(mockClient, 'release', [], 'GBM...', jest.fn().mockResolvedValue('h'), {
-        resourceFeeMultiplier: 2,
+      const signAndSubmit = jest.fn().mockResolvedValue('tx_hash');
+      const result = await invokeContract(mockClient, 'release', [], 'GBM...', signAndSubmit, {
+        resourceFeeMultiplier: 1.25,
       });
 
+      expect(result.success).toBe(true);
       expect(rpc.assembleTransaction).toHaveBeenCalledWith(
-        expect.anything(),
-        expect.objectContaining({ minResourceFee: '2000' }),
+        'mock_tx',
+        expect.objectContaining({
+          minResourceFee: '12500',
+        }),
       );
+    });
+
+    it('handles zero, missing, invalid multiplier, and >MAX_SAFE_INTEGER inputs in padResourceFee (#438)', async () => {
+      const { padResourceFee, DEFAULT_RESOURCE_FEE_MULTIPLIER } =
+        await import('../src/tx-pipeline');
+      expect(DEFAULT_RESOURCE_FEE_MULTIPLIER).toBe(1.1);
+      expect(padResourceFee('0')).toBe('0');
+      expect(padResourceFee(0n)).toBe('0');
+      expect(padResourceFee(-10n)).toBe('0');
+      expect(padResourceFee('')).toBe('0');
+      expect(padResourceFee('-500')).toBe('0');
+      expect(padResourceFee('not-a-number')).toBe('0');
+      expect(padResourceFee('1000', 0)).toBe('1100');
+      expect(padResourceFee('1000', -2)).toBe('1100');
+      expect(padResourceFee('1000', Number.NaN)).toBe('1100');
+      expect(padResourceFee('1000', 1)).toBe('1000');
+
+      // 64-bit stroop integers above Number.MAX_SAFE_INTEGER (2^53 + 1 = 9007199254740993)
+      expect(padResourceFee('9007199254740993', 1)).toBe('9007199254740993');
+      expect(padResourceFee(9007199254740993n, 1)).toBe('9007199254740993');
+      expect(padResourceFee('9007199254740993', 1.1)).toBe('9907919180215093');
     });
   });
 

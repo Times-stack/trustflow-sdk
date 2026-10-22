@@ -37,8 +37,50 @@ const DEFAULT_RETRY_POLICY: Required<Omit<RetryPolicy, 'timeoutMs'>> = {
   maxDelayMs: 5000,
 };
 
+export const DEFAULT_RESOURCE_FEE_MULTIPLIER = 1.1;
 const DEFAULT_POLL_INTERVAL_MS = 1500;
 const DEFAULT_POLL_ATTEMPTS = 10;
+
+/**
+ * Applies a safety headroom multiplier to a simulated Soroban `minResourceFee`
+ * (in stroops) and rounds up to an integer stroop string.
+ *
+ * @param minResourceFee - Simulated minimum resource fee in stroops (default `'0'`)
+ * @param multiplier - Safety multiplier (default {@link DEFAULT_RESOURCE_FEE_MULTIPLIER}, `1.1`)
+ */
+export function padResourceFee(
+  minResourceFee: string | number | bigint = '0',
+  multiplier: number = DEFAULT_RESOURCE_FEE_MULTIPLIER,
+): string {
+  const effectiveMultiplier =
+    Number.isFinite(multiplier) && multiplier > 0 ? multiplier : DEFAULT_RESOURCE_FEE_MULTIPLIER;
+
+  if (typeof minResourceFee === 'bigint') {
+    if (minResourceFee <= 0n) return '0';
+    const scale = 1_000_000n;
+    const multScaled = BigInt(Math.round(effectiveMultiplier * 1_000_000));
+    return ((minResourceFee * multScaled + (scale - 1n)) / scale).toString();
+  }
+
+  if (typeof minResourceFee === 'string') {
+    const trimmed = minResourceFee.trim();
+    if (/^\d+$/.test(trimmed)) {
+      const feeBig = BigInt(trimmed);
+      if (feeBig <= 0n) return '0';
+      if (feeBig > BigInt(Number.MAX_SAFE_INTEGER)) {
+        const scale = 1_000_000n;
+        const multScaled = BigInt(Math.round(effectiveMultiplier * 1_000_000));
+        return ((feeBig * multScaled + (scale - 1n)) / scale).toString();
+      }
+    }
+  }
+
+  const raw = Number(minResourceFee || 0);
+  if (!Number.isFinite(raw) || raw <= 0) {
+    return '0';
+  }
+  return Math.ceil(raw * effectiveMultiplier).toString();
+}
 
 function ok<T>(data: T): PipelineResult<T> {
   return { ok: true, data };
