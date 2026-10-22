@@ -74,7 +74,7 @@ export class EscrowBuilder {
    * depositor) and call `build()` once per gig.
    *
    * @throws {TrustFlowError} `VALIDATION_ERROR` when `depositor`, `beneficiary`
-   * or `amountXLM` is missing, when `arbitrator` is invalid, when milestone
+   * or `amountXLM` is missing, when `depositor`, `beneficiary`, or `arbitrator` is invalid, when milestone
    * amounts are invalid/exceed total amount, or when milestone deadlines are
    * not chronological or in the past.
    */
@@ -82,9 +82,13 @@ export class EscrowBuilder {
     if (!this.params.depositor) {
       throw TrustFlowError.validation('depositor', 'depositor required');
     }
+    assertStellarAddress(this.params.depositor, 'depositor');
+
     if (!this.params.beneficiary) {
       throw TrustFlowError.validation('beneficiary', 'beneficiary required');
     }
+    assertStellarAddress(this.params.beneficiary, 'beneficiary');
+
     if (!this.params.amountXLM) {
       throw TrustFlowError.validation('amountXLM', 'amountXLM required');
     }
