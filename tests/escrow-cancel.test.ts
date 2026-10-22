@@ -11,6 +11,7 @@ import { TrustFlowError } from '../src/errors';
 
 const CALLER = Keypair.random().publicKey();
 const client = {} as TrustFlowClient;
+const TX_HASH = 'a'.repeat(64);
 
 describe('filterUnreleasedMilestones', () => {
   it('returns empty array when escrow has no milestones', () => {
@@ -75,15 +76,12 @@ describe('encodeMilestoneIndices and buildCancelArgs', () => {
 });
 
 describe('cancelEscrow', () => {
-  it('resolves with a transaction identifier for valid input', async () => {
-    const txId = await cancelEscrow(client, 'escrow-1', CALLER);
-
-    expect(typeof txId).toBe('string');
-    expect(txId.length).toBeGreaterThan(0);
+  it('rejects when the underlying invocation cannot produce a transaction hash', async () => {
+    await expect(cancelEscrow(client, 'escrow-1', CALLER)).rejects.toThrow();
   });
 
   it('forwards encoded call arguments to invokeContract for escrows with milestones', async () => {
-    const invokeContract = jest.fn().mockResolvedValue('tx_cancel_123');
+    const invokeContract = jest.fn().mockResolvedValue(TX_HASH);
     const mockClient = {
       invokeContract,
       readContract: jest.fn(),
@@ -97,7 +95,7 @@ describe('cancelEscrow', () => {
 
     const txId = await cancelEscrow(mockClient, 'escrow-1', CALLER, milestones);
 
-    expect(txId).toBe('tx_cancel_123');
+    expect(txId).toBe(TX_HASH);
     expect(invokeContract).toHaveBeenCalledTimes(1);
     const [method, args] = invokeContract.mock.calls[0];
     expect(method).toBe('cancel_escrow');
@@ -110,7 +108,7 @@ describe('cancelEscrow', () => {
   });
 
   it('handles an escrow with all milestones unreleased', async () => {
-    const invokeContract = jest.fn().mockResolvedValue('tx_cancel_all');
+    const invokeContract = jest.fn().mockResolvedValue(TX_HASH);
     const mockClient = { invokeContract } as unknown as TrustFlowClient;
 
     const milestones = [
@@ -128,7 +126,7 @@ describe('cancelEscrow', () => {
   });
 
   it('handles an escrow with no milestones', async () => {
-    const invokeContract = jest.fn().mockResolvedValue('tx_cancel_none');
+    const invokeContract = jest.fn().mockResolvedValue(TX_HASH);
     const mockClient = { invokeContract } as unknown as TrustFlowClient;
 
     await cancelEscrow(mockClient, 'escrow-1', CALLER, []);
@@ -136,6 +134,28 @@ describe('cancelEscrow', () => {
     const [, args] = invokeContract.mock.calls[0];
     const vec = args[1].vec();
     expect(vec).toHaveLength(0);
+  });
+
+  it.each([
+    ['unauthorized', new Error('unauthorized')],
+    ['simulation failure', new Error('simulation failed')],
+    ['network failure', new Error('network failed')],
+  ])('propagates %s from an injected client', async (_label, error) => {
+    const invokeContract = jest.fn().mockRejectedValue(error);
+    const mockClient = { invokeContract } as unknown as TrustFlowClient;
+
+    await expect(cancelEscrow(mockClient, 'escrow-1', CALLER, [])).rejects.toBe(error);
+  });
+
+  it('rejects missing or fabricated transaction hashes', async () => {
+    for (const result of [undefined, 'tx_cancel_fake', { success: true }]) {
+      const mockClient = {
+        invokeContract: jest.fn().mockResolvedValue(result),
+      } as unknown as TrustFlowClient;
+      await expect(cancelEscrow(mockClient, 'escrow-1', CALLER, [])).rejects.toMatchObject({
+        code: 'SUBMISSION_ERROR',
+      });
+    }
   });
 
   it('rejects a missing escrowId with a validation error', async () => {

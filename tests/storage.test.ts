@@ -3,6 +3,7 @@ import { IPFSStorage } from '../src/storage/ipfs';
 import type { EncryptedData } from '../src';
 import type { EncryptedData as StorageEncryptedData } from '../src/storage';
 import { createApiHttpClient } from '../src/utils/http';
+import { TrustFlowError } from '../src/errors';
 
 const mockHttpPost = jest.fn();
 
@@ -228,5 +229,42 @@ describe('IPFSStorage.upload', () => {
     } finally {
       getSpy.mockRestore();
     }
+  });
+});
+
+describe('IPFSStorage encryption', () => {
+  it('round-trips authenticated encryption', () => {
+    const storage = new IPFSStorage();
+    const key = Buffer.alloc(32, 9);
+    const encrypted = storage.encrypt('secret payload', key);
+    expect(storage.decrypt(encrypted, key).toString()).toBe('secret payload');
+  });
+
+  it('reports encryption and decryption failures with specific codes', () => {
+    const storage = new IPFSStorage();
+    expect(() => storage.encrypt('data', Buffer.alloc(31))).toThrow(TrustFlowError);
+    try {
+      storage.encrypt('data', Buffer.alloc(31));
+    } catch (error) {
+      expect(error).toMatchObject({ code: 'VALIDATION_ERROR' });
+    }
+    expect(() => storage.decrypt({ iv: 'bad', data: 'bad', tag: 'bad' }, Buffer.alloc(31))).toThrow(
+      TrustFlowError,
+    );
+    try {
+      storage.decrypt({ iv: 'bad', data: 'bad', tag: 'bad' }, Buffer.alloc(31));
+    } catch (error) {
+      expect(error).toMatchObject({ code: 'VALIDATION_ERROR' });
+    }
+    const encrypted = storage.encrypt('data', Buffer.alloc(32, 1));
+    encrypted.tag = Buffer.from('corrupt').toString('base64');
+    try {
+      storage.decrypt(encrypted, Buffer.alloc(32, 1));
+    } catch (error) {
+      expect(error).toMatchObject({ code: 'DECRYPTION_ERROR' });
+    }
+    expect(() => storage.encrypt(Symbol() as unknown as string, Buffer.alloc(32, 1))).toThrow(
+      TrustFlowError,
+    );
   });
 });

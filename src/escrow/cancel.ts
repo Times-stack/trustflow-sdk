@@ -134,20 +134,31 @@ export async function cancelEscrow(
   const args = buildCancelArgs(escrowId, unreleasedIndices);
 
   if (typeof (client as any)?.invokeContract === 'function') {
-    return await (client as any).invokeContract('cancel_escrow', args);
+    const injectedResult = await (client as any).invokeContract('cancel_escrow', args);
+    return extractTransactionHash(injectedResult);
   }
 
-  try {
-    const res = await invokeContract(client, 'cancel_escrow', args, caller);
-    if (res?.txHash) {
-      return res.txHash;
-    }
-  } catch {
-    // Fall back to placeholder if invokeContract fails
+  const res = await invokeContract(client, 'cancel_escrow', args, caller);
+  if (!res.success) {
+    throw TrustFlowError.wrap(new Error(res.error || 'Escrow cancellation failed'), res.code);
   }
+  return extractTransactionHash(res);
+}
 
-  // Only sender or arbitrator may cancel
-  return `tx_cancel_${escrowId}_${Date.now()}`;
+function extractTransactionHash(response: unknown): string {
+  const hash =
+    typeof response === 'string'
+      ? response
+      : response && typeof response === 'object' && 'txHash' in response
+        ? (response as { txHash?: unknown }).txHash
+        : undefined;
+  if (typeof hash !== 'string' || !/^[0-9a-fA-F]{64}$/.test(hash)) {
+    throw new TrustFlowError(
+      'Escrow cancellation completed without a valid transaction hash',
+      'SUBMISSION_ERROR',
+    );
+  }
+  return hash;
 }
 
 /**

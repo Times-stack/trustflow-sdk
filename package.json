@@ -103,6 +103,7 @@
   "dependencies": {
     "@stellar/stellar-sdk": "^15.1.0",
     "axios": "^1.18.1",
+    "cbor-x": "^1.6.8",
     "zod": "^3.22.0"
   },
   "peerDependencies": {

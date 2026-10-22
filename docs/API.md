@@ -150,15 +150,20 @@ if (status.data.isReady) {
 
 ## WebAuthnManager
 
-Import `WebAuthnManager` and the `WebAuthnCredentialOptions`,
-`WebAuthnRegistrationOptions`, and `WebAuthnSignatureResponse` types from
-`@trustflow/sdk`.
+`WebAuthnManager` provides registration challenge creation and complete
+WebAuthn assertion verification. `WebAuthnCredentialOptions`,
+`WebAuthnRegistrationOptions`, `WebAuthnSignatureResponse`,
+`WebAuthnVerificationOptions`, and `WebAuthnKeyDerivationOptions` are exported
+types.
 
-- `createRegistrationChallenge(options)` — returns credential creation options using the supplied user and relying party information.
-- `deriveSmartAccountKeypair(credential, userId)` — derives a deterministic Stellar keypair from the credential and user ID; requires Node.js crypto.
-- `verifySignature(credential, signature)` — checks that the response counter increased and returns a credential with the new counter. This method does not cryptographically verify the WebAuthn signature.
-
-Each method returns an `SDKResult`.
+- `createRegistrationChallenge(options)` returns credential creation options.
+- `deriveSmartAccountKeypair(credential, userId, { secret })` requires a
+  private secret of at least 32 bytes; public credential data and user ID alone
+  are not sufficient to derive an account key.
+- `verifySignature(credential, signature, options)` is asynchronous and checks
+  the client-data type, expected challenge and origin, RP ID hash, flags,
+  authenticator counter, COSE public key, and ES256/RS256 signature. Challenge
+  freshness and one-time consumption remain server integration responsibilities.
 
 ## IPFSStorage
 - `new IPFSStorage(config?)` — `config.apiUrl` (default: web3.storage-compatible upload API), `config.apiKey`, `config.gatewayUrl`
