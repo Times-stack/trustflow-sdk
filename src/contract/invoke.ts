@@ -3,6 +3,7 @@ import type { TrustFlowClient } from '../client';
 import type { ContractCallResult } from '../types/contract';
 import { TrustFlowError } from '../errors';
 import type { AccountOptions } from '../accounts/types';
+import { TrustFlowError } from '../errors';
 import { withTransientRetry } from '../utils/node-retry';
 import { padResourceFee } from '../utils/resource-fee';
 import { describeError, logger } from '../utils/logger';
@@ -57,9 +58,9 @@ export interface InvokeContractOptions extends AccountOptions {
  *
  * When the simulation fails or an exception is caught, the result includes the
  * RPC's error message in the `error` field so callers can diagnose the failure
- * without parsing logs. A thrown {@link TrustFlowError} (for example `TIMEOUT`
- * or an unregistered `options.account`, `ACCOUNT_NOT_FOUND`) also sets `code`,
- * so callers can branch on the typed code rather than the message.
+ * without parsing logs. When the caught error is a {@link TrustFlowError}
+ * (such as `TIMEOUT` or `ACCOUNT_NOT_FOUND`), its typed `code` is also
+ * preserved on `result.code`.
  *
  * @param client - Configured client, for the contract ID, network and retry budget
  * @param method - Contract method name
@@ -78,18 +79,18 @@ export async function invokeContract(
   signAndSubmit?: SignAndSubmitFn,
   options: InvokeContractOptions = {},
 ): Promise<ContractCallResult> {
-  const server = client.getSorobanServer();
-  const contract = new Contract(client.contractId);
-
-  logger.debug('Invoking contract method', {
-    method,
-    caller,
-    contractId: client.contractId,
-    argsCount: args.length,
-  });
-
   try {
     client.resolveAccount(options.account);
+    const server = client.getSorobanServer();
+    const contract = new Contract(client.contractId);
+
+    logger.debug('Invoking contract method', {
+      method,
+      caller,
+      contractId: client.contractId,
+      argsCount: args.length,
+    });
+
     const account = await withTransientRetry(
       () => server.getAccount(caller),
       { ...options.retry, timeoutMs: options.timeoutMs ?? client.timeoutMs },
@@ -162,7 +163,14 @@ export async function invokeContract(
       gasUsed,
     };
   } catch (e) {
-    logger.error('Contract invocation failed', { method, caller, error: describeError(e) });
+    logger.error('Contract invocation failed', { method, caller, error: e });
+    if (e instanceof TrustFlowError) {
+      return {
+        success: false,
+        error: e.message,
+        code: e.code,
+      };
+    }
     const message = e instanceof Error ? e.message : String(e);
     const code = e instanceof TrustFlowError ? e.code : undefined;
     return { success: false, error: message, code };
