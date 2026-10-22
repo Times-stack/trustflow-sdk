@@ -119,6 +119,116 @@ describe('useEscrow — release (#107)', () => {
   });
 });
 
+describe('useEscrow — optimistic updates (#367)', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  it('shows a temporary pending escrow immediately when optimistic is enabled', async () => {
+    let resolveCreate: (v: unknown) => void = () => {};
+    mockCreate.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveCreate = resolve as (v: unknown) => void;
+        }),
+    );
+    const { result } = renderHook(() => useEscrow(client));
+
+    let pending: Promise<unknown> | undefined;
+    act(() => {
+      pending = result.current.create(
+        { sender: 'GA', recipient: 'GB', amountStroops: 100n } as never,
+        { optimistic: true },
+      );
+    });
+
+    expect(result.current.escrow).toMatchObject({ status: 'PENDING', pending: true });
+    expect(result.current.loading).toBe(true);
+
+    const confirmed = { id: 'escrow-1', status: 'PENDING' };
+    await act(async () => {
+      resolveCreate(confirmed);
+      await pending;
+    });
+
+    expect(result.current.escrow).toBe(confirmed);
+    expect(result.current.error).toBeNull();
+    expect(result.current.loading).toBe(false);
+  });
+
+  it('rolls back the optimistic escrow and notifies the caller on create failure', async () => {
+    const onOptimisticRollback = jest.fn();
+    mockCreate.mockRejectedValueOnce(new Error('minimum amount not met'));
+    const { result } = renderHook(() => useEscrow(client));
+
+    await act(async () => {
+      await expect(
+        result.current.create(
+          { sender: 'GA', recipient: 'GB', amountStroops: 100n } as never,
+          { optimistic: true, onOptimisticRollback },
+        ),
+      ).rejects.toThrow('minimum amount not met');
+    });
+
+    expect(result.current.escrow).toBeNull();
+    expect(result.current.error).toBe('minimum amount not met');
+    expect(result.current.loading).toBe(false);
+    expect(onOptimisticRollback).toHaveBeenCalledWith(expect.any(Error), null);
+  });
+
+  it('marks the escrow released optimistically and clears the pending flag on success', async () => {
+    mockCreate.mockResolvedValueOnce({ id: 'escrow-1', status: 'FUNDED' });
+    const { result } = renderHook(() => useEscrow(client));
+
+    await act(async () => {
+      await result.current.create({} as never);
+    });
+
+    let resolveRelease: (v: unknown) => void = () => {};
+    mockRelease.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveRelease = resolve as (v: unknown) => void;
+        }),
+    );
+
+    let pending: Promise<unknown> | undefined;
+    act(() => {
+      pending = result.current.release('escrow-1', 'GA', { optimistic: true });
+    });
+
+    expect(result.current.escrow).toMatchObject({ status: 'RELEASED', pending: true });
+
+    await act(async () => {
+      resolveRelease('tx_release_abc');
+      await pending;
+    });
+
+    expect(result.current.escrow).toMatchObject({ id: 'escrow-1', status: 'RELEASED', pending: false });
+    expect(result.current.error).toBeNull();
+  });
+
+  it('restores the previous escrow and notifies the caller when an optimistic release fails', async () => {
+    const onOptimisticRollback = jest.fn();
+    const funded = { id: 'escrow-1', status: 'FUNDED' };
+    mockCreate.mockResolvedValueOnce(funded);
+    const { result } = renderHook(() => useEscrow(client));
+
+    await act(async () => {
+      await result.current.create({} as never);
+    });
+
+    mockRelease.mockRejectedValueOnce(new Error('unauthorized'));
+    await act(async () => {
+      await expect(
+        result.current.release('escrow-1', 'GA', { optimistic: true, onOptimisticRollback }),
+      ).rejects.toThrow('unauthorized');
+    });
+
+    expect(result.current.escrow).toBe(funded);
+    expect(result.current.error).toBe('unauthorized');
+    expect(onOptimisticRollback).toHaveBeenCalledWith(expect.any(Error), funded);
+  });
+});
+
 describe('useEscrow — cancel (#473)', () => {
   beforeEach(() => jest.clearAllMocks());
 

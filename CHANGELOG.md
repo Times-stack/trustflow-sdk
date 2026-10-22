@@ -8,6 +8,9 @@
 - Support escrow funded/cancelled and dispute resolved event topic filters.
 - Preserve caller-owned AbortSignal cancellation when fetchWithTimeout has a deadline.
 - Issue #568 is already fixed on main through the bias-free nonce implementation (#352).
+### Restore useEscrow optimistic updates (#604)
+
+- Issue #604: Restored the opt-in `optimistic` option for `useEscrow().create` and `useEscrow().release`, which PR #481 dropped when it added `cancel`/`dispute`/`refresh`. Pass `{ optimistic: true, onOptimisticRollback? }` to show a pending escrow immediately and roll back to the previous state on failure. The new option types `OptimisticOptions`, `CreateEscrowOptions` and `ReleaseEscrowOptions` are exported from `@trustflow/sdk/react`.
 
 ### Balance cache isolation on network switch (#603)
 
