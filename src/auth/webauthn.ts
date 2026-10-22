@@ -59,6 +59,8 @@ export interface WebAuthnKeyDerivationOptions {
  * Enables passwordless, phishing-resistant authentication using platform authenticators.
  */
 export class WebAuthnManager {
+  constructor(_client: TrustFlowClient) {}
+
   /**
    * Creates a registration challenge for a new WebAuthn passkey.
    *
@@ -80,11 +82,15 @@ export class WebAuthnManager {
     options: WebAuthnRegistrationOptions,
   ): SDKResult<PublicKeyCredentialCreationOptions> {
     try {
-      // WebCrypto-first with a Node fallback, from the shared helper — the
-      // previous inline window/require branching duplicated that logic here.
-      // The copy into a fresh Uint8Array keeps the ArrayBuffer-backed type
-      // PublicKeyCredentialCreationOptions expects.
-      const challenge = new Uint8Array(randomBytes(32));
+      const challenge = new Uint8Array(32);
+      if (typeof window !== 'undefined' && window.crypto) {
+        window.crypto.getRandomValues(challenge);
+      } else {
+        // Node.js environment
+        // eslint-disable-next-line @typescript-eslint/no-require-imports
+        const crypto = require('crypto');
+        crypto.randomFillSync(challenge);
+      }
 
       const credentialCreationOptions: PublicKeyCredentialCreationOptions = {
         challenge,
@@ -148,16 +154,8 @@ export class WebAuthnManager {
     options: WebAuthnKeyDerivationOptions,
   ): SDKResult<Keypair> {
     try {
-      // HMAC-SHA256 is synchronous, so Node's crypto module is required here
-      // (WebCrypto's subtle.digest/hmac are async-only and this method is
-      // sync by contract). Lazy require keeps bundlers from seeing a static
-      // Node built-in import.
-      const modName = 'crypto';
-      const req = typeof require !== 'undefined' ? require : undefined;
-      const nodeCrypto = req ? req(modName) : undefined;
-      if (!nodeCrypto) {
-        throw new Error('WebAuthn keypair derivation requires the Node.js crypto module');
-      }
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const crypto = require('crypto');
 
       if (!options?.secret || options.secret.length < 32) {
         throw TrustFlowError.validation(
@@ -175,10 +173,8 @@ export class WebAuthnManager {
       hmac.update(credential.id);
       const seed = hmac.digest(); // 32 bytes — exactly an ed25519 seed
 
-      // Create a keypair from the derived raw seed. (This previously fed a
-      // 33-byte Buffer into `Keypair.fromSecret`, which expects a strkey
-      // string, so derivation always failed at runtime.)
-      const keypair = Keypair.fromRawEd25519Seed(seed);
+      // Create a keypair from the derived seed
+      const keypair = Keypair.fromRawEd25519Seed(seed.slice(0, 32));
 
       logger.debug('WebAuthn smart account keypair derived', { credentialId: credential.id });
       return {

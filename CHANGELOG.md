@@ -2,13 +2,10 @@
 
 ## [Unreleased]
 
-### Wallet rejection helper export (#567)
+### Duplicate error code cleanup (#432)
 
-- Issue #567: Exported `isWalletRejection` from `@trustflow/sdk/wallet`, allowing custom wallet adapters to reuse the SDK's existing rejection-classification logic.
-
-### Session revocation on wallet disconnect (#347)
-
-- Issue #449: Clear cached balances in `TrustFlowClient.switchNetwork` so cached entries do not leak across networks.
+- Issue #432: Removed the duplicate `INVALID_CONTRACT_CALL` member from `TrustFlowErrorCode` and enabled `@typescript-eslint/no-duplicate-type-constituents` in the default ESLint config.
+- Repaired pre-existing WebAuthn, IPFS, and fee-bump type errors so the required `npm run typecheck` and `npm run lint` checks pass.
 
 ### MultiSigConfig integration (#442)
 

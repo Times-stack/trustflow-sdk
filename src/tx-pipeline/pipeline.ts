@@ -780,11 +780,15 @@ export class TransactionPipeline {
       const freshTx = new TransactionBuilder(reloaded.data, {
         fee: prepared.data.fee,
         networkPassphrase: this.client.getNetworkPassphrase(),
-      }).setTimeout(30);
+      });
 
-      // `prepared.data.operations` are parsed operation objects, but
-      // `TransactionBuilder.addOperation` (stellar-base v13+) takes raw
-      // `xdr.Operation`s — re-add those straight from the original envelope.
+      const timeBounds = prepared.data.timeBounds;
+      if (timeBounds) {
+        freshTx.setTimebounds(Number(timeBounds.minTime), Number(timeBounds.maxTime));
+      } else {
+        freshTx.setTimeout(30);
+      }
+
       for (const op of prepared.data.toEnvelope().v1().tx().operations()) {
         freshTx.addOperation(op);
       }

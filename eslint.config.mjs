@@ -10,6 +10,7 @@ export default [
     languageOptions: {
       parser: tsParser,
       parserOptions: {
+        // Required by type-aware rules such as no-duplicate-type-constituents.
         project: './tsconfig.json',
       },
       // The SDK supports both browser wallet integrations and Node consumers.
@@ -30,6 +31,7 @@ export default [
       // These type-focused checks remain available in `npm run lint:strict`.
       '@typescript-eslint/no-explicit-any': 'off',
       '@typescript-eslint/no-unused-vars': 'off',
-    },
-  },
+      '@typescript-eslint/no-duplicate-type-constituents': 'error',
+    }
+  }
 ];
