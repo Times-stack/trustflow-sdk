@@ -1,5 +1,11 @@
 import { rpc, Contract } from '@stellar/stellar-sdk';
-import { buildCreateEscrowArgs, buildReleaseArgs, buildDisputeArgs } from '../src/contract/build';
+import {
+  buildCreateEscrowArgs,
+  buildReleaseArgs,
+  buildClaimArgs,
+  buildFundArgs,
+  buildDisputeArgs,
+} from '../src/contract/build';
 import { invokeContract } from '../src/contract/invoke';
 import { readContractState } from '../src/contract/read';
 import { simulateContractCall } from '../src/contract/simulate';
@@ -52,10 +58,14 @@ describe('contract module', () => {
   });
 
   describe('build.ts', () => {
+    const validAddr = 'GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF';
+    const validAddr2 = 'GCFIRY65OQE7DFP5KLNS2PF2LVZMUZYJX4OZIEQ36N2IQANUB5XVYOJR';
+    const validContractAddr = 'CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABSC4';
+
     it('buildCreateEscrowArgs returns valid arguments', () => {
       const args = buildCreateEscrowArgs({
-        sender: 'GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF',
-        recipient: 'GCFIRY65OQE7DFP5KLNS2PF2LVZMUZYJX4OZIEQ36N2IQANUB5XVYOJR',
+        sender: validAddr,
+        recipient: validAddr2,
         amountStroops: 1000n,
         durationBlocks: 100,
       });
@@ -63,11 +73,49 @@ describe('contract module', () => {
     });
 
     it('buildReleaseArgs returns valid arguments', () => {
-      const args = buildReleaseArgs(
-        'escrow1',
-        'GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF',
-      );
+      const args = buildReleaseArgs('escrow1', validAddr);
       expect(args.length).toBe(2);
+    });
+
+    it('buildClaimArgs returns valid arguments and rejects invalid escrowId or claimant', () => {
+      const args = buildClaimArgs('escrow1', validAddr);
+      expect(args.length).toBe(2);
+
+      expect(() => buildClaimArgs('', validAddr)).toThrow(TrustFlowError);
+      expect(() => buildClaimArgs('', validAddr)).toThrow(
+        expect.objectContaining({ code: 'VALIDATION_ERROR', field: 'escrowId' }),
+      );
+
+      expect(() => buildClaimArgs('escrow1', 'bad-address')).toThrow(TrustFlowError);
+      expect(() => buildClaimArgs('escrow1', 'bad-address')).toThrow(
+        expect.objectContaining({ code: 'VALIDATION_ERROR', field: 'claimant' }),
+      );
+    });
+
+    it('buildFundArgs returns valid arguments and rejects invalid escrowId, funder, or tokenAddress', () => {
+      expect(buildFundArgs('escrow1', validAddr, 50_000_000n).length).toBe(3);
+      expect(buildFundArgs('escrow1', validAddr, 50_000_000n, validAddr2).length).toBe(4);
+      expect(buildFundArgs('escrow1', validAddr, 50_000_000n, validContractAddr).length).toBe(4);
+
+      expect(() => buildFundArgs('', validAddr, 50_000_000n)).toThrow(TrustFlowError);
+      expect(() => buildFundArgs('', validAddr, 50_000_000n)).toThrow(
+        expect.objectContaining({ code: 'VALIDATION_ERROR', field: 'escrowId' }),
+      );
+
+      expect(() => buildFundArgs('escrow1', 'bad-address', 50_000_000n)).toThrow(TrustFlowError);
+      expect(() => buildFundArgs('escrow1', 'bad-address', 50_000_000n)).toThrow(
+        expect.objectContaining({ code: 'VALIDATION_ERROR', field: 'funder' }),
+      );
+
+      expect(() => buildFundArgs('escrow1', validAddr, 50_000_000n, 'bad-token')).toThrow(
+        TrustFlowError,
+      );
+      expect(() => buildFundArgs('escrow1', validAddr, 50_000_000n, 'bad-token')).toThrow(
+        expect.objectContaining({ code: 'VALIDATION_ERROR', field: 'tokenAddress' }),
+      );
+      expect(() => buildFundArgs('escrow1', validAddr, 50_000_000n, '')).toThrow(
+        expect.objectContaining({ code: 'VALIDATION_ERROR', field: 'tokenAddress' }),
+      );
     });
 
     it('buildDisputeArgs returns valid arguments', () => {

@@ -1,7 +1,7 @@
 import { Address, nativeToScVal } from '@stellar/stellar-sdk';
 import type { CreateEscrowParams } from '../types';
 import type { VotePayload } from '../types/juror';
-import { assertStellarAddress, isValidEscrowId } from '../utils/validation';
+import { assertStellarAddress, isValidAddress, isValidEscrowId } from '../utils/validation';
 import { TrustFlowError } from '../errors';
 
 function assertEscrowId(escrowId: string): void {
@@ -81,8 +81,18 @@ export function buildReleaseArgs(escrowId: string, caller: string): unknown[] {
  * funds to the beneficiary, while claim is the beneficiary pulling funds the
  * contract has already cleared for withdrawal.
  */
+function encodeAddressScVal(address: string, field: string): unknown {
+  try {
+    return new Address(address).toScVal();
+  } catch {
+    throw TrustFlowError.validation(field, `Invalid Stellar address for "${field}": ${address}`);
+  }
+}
+
 export function buildClaimArgs(escrowId: string, claimant: string): unknown[] {
-  return [nativeToScVal(escrowId, { type: 'string' }), new Address(claimant).toScVal()];
+  assertEscrowId(escrowId);
+  assertStellarAddress(claimant, 'claimant');
+  return [nativeToScVal(escrowId, { type: 'string' }), encodeAddressScVal(claimant, 'claimant')];
 }
 
 /**
@@ -100,13 +110,21 @@ export function buildFundArgs(
   amountStroops: bigint,
   tokenAddress?: string,
 ): unknown[] {
+  assertEscrowId(escrowId);
+  assertStellarAddress(funder, 'funder');
   const args: unknown[] = [
     nativeToScVal(escrowId, { type: 'string' }),
-    new Address(funder).toScVal(),
+    encodeAddressScVal(funder, 'funder'),
     nativeToScVal(amountStroops, { type: 'i128' }),
   ];
-  if (tokenAddress) {
-    args.push(new Address(tokenAddress).toScVal());
+  if (tokenAddress !== undefined) {
+    if (!isValidAddress(tokenAddress)) {
+      throw TrustFlowError.validation(
+        'tokenAddress',
+        `Invalid Stellar address for "tokenAddress": ${tokenAddress}`,
+      );
+    }
+    args.push(encodeAddressScVal(tokenAddress, 'tokenAddress'));
   }
   return args;
 }
