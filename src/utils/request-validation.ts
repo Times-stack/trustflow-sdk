@@ -10,6 +10,8 @@ export interface RequestValidationConfig {
   maxRequestSizeBytes?: number;
   /** Maximum allowed JSON string length before serialization. */
   maxJsonLength?: number;
+  /** Maximum allowed individual header size in bytes. Defaults to 8KB (8192 bytes). */
+  maxHeaderSizeBytes?: number;
 }
 
 export const DEFAULT_MAX_REQUEST_SIZE = 10 * 1024 * 1024; // 10MB
@@ -41,7 +43,36 @@ export function getJsonSizeBytes(obj: unknown): number {
 export function validateRequestSize(body: unknown, config?: RequestValidationConfig): void {
   const maxSize = config?.maxRequestSizeBytes ?? DEFAULT_MAX_REQUEST_SIZE;
 
-  const sizeBytes = getJsonSizeBytes(body);
+  let sizeBytes: number;
+  if (typeof Blob !== 'undefined' && body instanceof Blob) {
+    sizeBytes = body.size;
+  } else if (body instanceof ArrayBuffer) {
+    sizeBytes = body.byteLength;
+  } else if (ArrayBuffer.isView(body)) {
+    sizeBytes = body.byteLength;
+  } else if (typeof URLSearchParams !== 'undefined' && body instanceof URLSearchParams) {
+    sizeBytes = new Blob([body.toString()]).size;
+  } else {
+    if (config?.maxJsonLength !== undefined) {
+      let json: string | undefined;
+      try {
+        json = JSON.stringify(body);
+      } catch (error) {
+        throw new TrustFlowError(
+          'Failed to calculate request size: non-serializable object',
+          'VALIDATION_ERROR',
+          error,
+        );
+      }
+      if (typeof json === 'string' && json.length > config.maxJsonLength) {
+        throw new TrustFlowError(
+          `Request JSON length (${json.length}) exceeds maximum allowed length (${config.maxJsonLength})`,
+          'VALIDATION_ERROR',
+        );
+      }
+    }
+    sizeBytes = getJsonSizeBytes(body);
+  }
 
   if (sizeBytes > maxSize) {
     const sizeMB = (sizeBytes / (1024 * 1024)).toFixed(2);

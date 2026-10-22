@@ -9,6 +9,7 @@ import {
   toApiErrorMessage,
 } from '../src/utils/http';
 import { AxiosError } from 'axios';
+import { HttpInterceptors } from '../src/utils/interceptors';
 
 /** The minimal error shape the retry policy inspects. */
 interface HttpError {
@@ -345,5 +346,138 @@ describe('toApiErrorMessage', () => {
   it('formats network errors and unknown values', () => {
     expect(toApiErrorMessage(new Error('timeout'))).toBe('Network error: timeout');
     expect(toApiErrorMessage('boom')).toBe('Network error: boom');
+  });
+});
+
+describe('createApiHttpClient request size validation (#436)', () => {
+  it('rejects an oversized request body locally with VALIDATION_ERROR without invoking the network adapter', async () => {
+    const adapter = jest.fn(async (config) => ({
+      data: { ok: true },
+      status: 200,
+      statusText: 'OK',
+      headers: {},
+      config,
+    }));
+
+    const http = createApiHttpClient({
+      baseURL: 'https://api.trustflow.xyz',
+      requestValidation: { maxRequestSizeBytes: 64 },
+    });
+    http.defaults.adapter = adapter;
+
+    const oversizedBody = { payload: 'x'.repeat(200) };
+
+    await expect(http.post('/disputes', oversizedBody)).rejects.toMatchObject({
+      name: 'TrustFlowError',
+      code: 'VALIDATION_ERROR',
+      message: expect.stringMatching(/exceeds maximum allowed size/i),
+    });
+    expect(adapter).not.toHaveBeenCalled();
+  });
+
+  it('supports maxRequestSizeBytes shorthand on ApiHttpClientOptions and allows payloads within the limit', async () => {
+    const adapter = jest.fn(async (config) => ({
+      data: { ok: true },
+      status: 200,
+      statusText: 'OK',
+      headers: {},
+      config,
+    }));
+
+    const http = createApiHttpClient({
+      baseURL: 'https://api.trustflow.xyz',
+      maxRequestSizeBytes: 128,
+    });
+    http.defaults.adapter = adapter;
+
+    const res = await http.post('/disputes', { payload: 'small' });
+    expect(res.data).toEqual({ ok: true });
+    expect(adapter).toHaveBeenCalledTimes(1);
+
+    await expect(http.post('/disputes', { payload: 'y'.repeat(256) })).rejects.toMatchObject({
+      name: 'TrustFlowError',
+      code: 'VALIDATION_ERROR',
+    });
+    expect(adapter).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects an oversized per-request header locally with VALIDATION_ERROR without invoking the network adapter', async () => {
+    const adapter = jest.fn(async (config) => ({
+      data: { ok: true },
+      status: 200,
+      statusText: 'OK',
+      headers: {},
+      config,
+    }));
+
+    const http = createApiHttpClient({
+      baseURL: 'https://api.trustflow.xyz',
+      requestValidation: { maxHeaderSizeBytes: 64 },
+    });
+    http.defaults.adapter = adapter;
+
+    await expect(
+      http.get('/gigs', { headers: { 'X-Custom-Metadata': 'z'.repeat(128) } }),
+    ).rejects.toMatchObject({
+      name: 'TrustFlowError',
+      code: 'VALIDATION_ERROR',
+      message: expect.stringMatching(/Header "X-Custom-Metadata" size/i),
+    });
+    expect(adapter).not.toHaveBeenCalled();
+  });
+
+  it('rejects an oversized URLSearchParams request body locally with VALIDATION_ERROR without invoking the network adapter', async () => {
+    const adapter = jest.fn(async (config) => ({
+      data: { ok: true },
+      status: 200,
+      statusText: 'OK',
+      headers: {},
+      config,
+    }));
+
+    const http = createApiHttpClient({
+      baseURL: 'https://api.trustflow.xyz',
+      requestValidation: { maxRequestSizeBytes: 64 },
+    });
+    http.defaults.adapter = adapter;
+
+    const form = new URLSearchParams({ field: 'a'.repeat(200) });
+
+    await expect(http.post('/disputes', form)).rejects.toMatchObject({
+      name: 'TrustFlowError',
+      code: 'VALIDATION_ERROR',
+      message: expect.stringMatching(/exceeds maximum allowed size/i),
+    });
+    expect(adapter).not.toHaveBeenCalled();
+  });
+
+  it('validates payload size after user-registered HttpInterceptors request hooks mutate config.data', async () => {
+    const adapter = jest.fn(async (config) => ({
+      data: { ok: true },
+      status: 200,
+      statusText: 'OK',
+      headers: {},
+      config,
+    }));
+
+    const interceptors = new HttpInterceptors();
+    interceptors.request.use((config) => {
+      config.data = { ...(config.data as Record<string, unknown>), injected: 'm'.repeat(200) };
+      return config;
+    });
+
+    const http = createApiHttpClient({
+      baseURL: 'https://api.trustflow.xyz',
+      interceptors,
+      requestValidation: { maxRequestSizeBytes: 64 },
+    });
+    http.defaults.adapter = adapter;
+
+    await expect(http.post('/disputes', { ok: true })).rejects.toMatchObject({
+      name: 'TrustFlowError',
+      code: 'VALIDATION_ERROR',
+      message: expect.stringMatching(/exceeds maximum allowed size/i),
+    });
+    expect(adapter).not.toHaveBeenCalled();
   });
 });
