@@ -1,162 +1,203 @@
-﻿const fs = require('fs');
+const fs = require('fs');
 const path = require('path');
+const ts = require('typescript');
 
-const repoRoot = path.join(__dirname, '..');
-const DEFAULT_ENTRY_POINT = path.join(repoRoot, 'src/index.ts');
-const DEFAULT_API_DOC = path.join(repoRoot, 'docs/API.md');
-const DEFAULT_BASELINE = path.join(__dirname, 'doc-coverage-baseline.json');
+const defaultApiDocPath = path.join(__dirname, '../docs/API.md');
+const defaultEntryPointPath = path.join(__dirname, '../src/index.ts');
 
-// Surface clients that must be documented regardless of the baseline.
-const CORE_TARGETS = ['MultiSigEscrowClient', 'TrustFlowClient'];
-
-// `export class|function|const|...` declarations, e.g. `export const enum Foo`.
-const DECLARATION_PATTERN =
-    /export\s+(?:declare\s+)?(?:abstract\s+)?(?:async\s+)?(?:class|function\*?|const\s+enum|const|let|var|enum|interface|type|namespace)\s+([A-Za-z_$][\w$]*)/g;
-// `export { A, B as C, type D }` with or without a `from` clause.
-const NAMED_EXPORT_PATTERN = /export\s+(?:type\s+)?\{([^}]*)\}/g;
-// `export * from './x'` and `export * as ns from './x'`.
-const STAR_EXPORT_PATTERN = /export\s+\*(?:\s+as\s+([A-Za-z_$][\w$]*))?\s+from\s*['"]([^'"]+)['"]/g;
-
-/** Drops block and line comments so commented-out exports are not counted. */
-function stripComments(source) {
-    return source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|\s)\/\/.*$/gm, '$1');
-}
-
-/** Resolves a relative `export * from` specifier to the file it names. */
-function resolveReExport(fromFile, specifier) {
-    const relativeFrom = path.relative(repoRoot, fromFile);
-    if (!specifier.startsWith('.')) {
-        throw new Error(`Cannot follow non-relative re-export '${specifier}' in ${relativeFrom}`);
+function resolveModulePath(baseDir, spec) {
+  const target = path.resolve(baseDir, spec);
+  if (fs.existsSync(`${target}.ts`) && fs.statSync(`${target}.ts`).isFile()) {
+    return `${target}.ts`;
+  }
+  if (spec.endsWith('.js')) {
+    const tsTarget = target.replace(/\.js$/, '.ts');
+    if (fs.existsSync(tsTarget) && fs.statSync(tsTarget).isFile()) {
+      return tsTarget;
     }
-    const base = path.resolve(path.dirname(fromFile), specifier);
-    const target = [`${base}.ts`, path.join(base, 'index.ts')].find((candidate) =>
-        fs.existsSync(candidate),
-    );
-    if (!target) {
-        throw new Error(`Cannot resolve re-export '${specifier}' from ${relativeFrom}`);
-    }
+  }
+  const indexTarget = path.join(target, 'index.ts');
+  if (fs.existsSync(indexTarget) && fs.statSync(indexTarget).isFile()) {
+    return indexTarget;
+  }
+  if (fs.existsSync(target) && fs.statSync(target).isFile()) {
     return target;
+  }
+  return null;
 }
 
-/** Turns the inside of `{ A, B as C, type D }` into the exported names `A, C, D`. */
-function parseNamedList(list) {
-    return list
-        .split(',')
-        .map((entry) => entry.trim().replace(/^type\s+/, ''))
-        .filter(Boolean)
-        .map((entry) => entry.split(/\s+as\s+/).pop().trim());
+function hasExportModifier(node) {
+  return (
+    Array.isArray(node.modifiers) &&
+    node.modifiers.some((mod) => mod.kind === ts.SyntaxKind.ExportKeyword)
+  );
+}
+
+function hasDefaultModifier(node) {
+  return (
+    Array.isArray(node.modifiers) &&
+    node.modifiers.some((mod) => mod.kind === ts.SyntaxKind.DefaultKeyword)
+  );
+}
+
+function collectBindingNames(nameNode, symbols) {
+  if (!nameNode) return;
+  if (ts.isIdentifier(nameNode)) {
+    symbols.add(nameNode.text);
+  } else if (ts.isObjectBindingPattern(nameNode) || ts.isArrayBindingPattern(nameNode)) {
+    for (const element of nameNode.elements) {
+      if (ts.isBindingElement(element)) {
+        collectBindingNames(element.name, symbols);
+      }
+    }
+  }
 }
 
 /**
- * Collects every name a module exposes, following `export *` re-exports into
- * the modules they point at. `default` is never a public symbol here.
- */
-function collectExports(file, visited = new Set()) {
-    const resolved = path.resolve(file);
-    const names = new Set();
-    if (visited.has(resolved)) return names;
-    visited.add(resolved);
-
-    const source = stripComments(fs.readFileSync(resolved, 'utf8'));
-
-    for (const [, name] of source.matchAll(DECLARATION_PATTERN)) names.add(name);
-    for (const [, list] of source.matchAll(NAMED_EXPORT_PATTERN)) {
-        for (const name of parseNamedList(list)) names.add(name);
-    }
-    for (const [, alias, specifier] of source.matchAll(STAR_EXPORT_PATTERN)) {
-        if (alias) {
-            names.add(alias);
-            continue;
-        }
-        for (const name of collectExports(resolveReExport(resolved, specifier), visited)) {
-            names.add(name);
-        }
-    }
-
-    names.delete('default');
-    return names;
-}
-
-/** True when `symbol` appears in the docs as a whole identifier (case-sensitive). */
-function isDocumented(symbol, docContent) {
-    const escaped = symbol.replace(/\$/g, '\\$');
-    return new RegExp(`(?<![\\w$])${escaped}(?![\\w$])`).test(docContent);
-}
-
-function readBaseline(baselinePath) {
-    if (!fs.existsSync(baselinePath)) return new Set();
-    return new Set(JSON.parse(fs.readFileSync(baselinePath, 'utf8')).undocumented);
-}
-
-/**
- * Compares the public surface against the API docs.
+ * Recursively extracts all public symbols exported from a TypeScript entry file
+ * using the TypeScript AST parser (`ts.createSourceFile`), walking:
+ * - `export * from './x'` barrel re-exports
+ * - `export * as ns from './x'` namespace re-exports
+ * - `export { A, B as C, type D } [from './x']` named export blocks
+ * - direct `export` declarations (classes, functions, interfaces, types, enums,
+ *   namespaces, and single/multi/destructured variable declarations).
  *
- * `failures` are undocumented symbols that are not in the baseline (or are core
- * targets), so they fail the check. `undocumented` is every non-core gap today,
- * used to regenerate the baseline. `stale` lists baseline entries that are now
- * documented or no longer exported.
+ * @param {string} filePath
+ * @param {Set<string>} [visited]
+ * @returns {Set<string>}
  */
-function checkDocCoverage({
-    entryPoint = DEFAULT_ENTRY_POINT,
-    apiDoc = DEFAULT_API_DOC,
-    baselinePath = DEFAULT_BASELINE,
-} = {}) {
-    const docContent = fs.readFileSync(apiDoc, 'utf8');
-    const exported = collectExports(entryPoint);
-    CORE_TARGETS.forEach((target) => exported.add(target));
+function extractExportedSymbols(filePath, visited = new Set()) {
+  const resolved = path.resolve(filePath);
+  if (visited.has(resolved) || !fs.existsSync(resolved)) {
+    return new Set();
+  }
+  visited.add(resolved);
 
-    const undocumented = [...exported].filter((symbol) => !isDocumented(symbol, docContent)).sort();
-    const baseline = readBaseline(baselinePath);
-    const failures = undocumented.filter(
-        (symbol) => CORE_TARGETS.includes(symbol) || !baseline.has(symbol),
-    );
-    const stale = [...baseline].filter((symbol) => !undocumented.includes(symbol)).sort();
+  const raw = fs.readFileSync(resolved, 'utf8');
+  const sourceFile = ts.createSourceFile(resolved, raw, ts.ScriptTarget.Latest, true);
+  const dir = path.dirname(resolved);
+  const symbols = new Set();
 
-    return {
-        undocumented: undocumented.filter((symbol) => !CORE_TARGETS.includes(symbol)),
-        failures,
-        stale,
-    };
+  for (const stmt of sourceFile.statements) {
+    if (ts.isExportDeclaration(stmt)) {
+      const moduleSpec =
+        stmt.moduleSpecifier && ts.isStringLiteral(stmt.moduleSpecifier)
+          ? stmt.moduleSpecifier.text
+          : null;
+
+      if (!stmt.exportClause) {
+        // `export * from './module'` or `export type * from './module'`
+        if (moduleSpec && moduleSpec.startsWith('.')) {
+          const childPath = resolveModulePath(dir, moduleSpec);
+          if (childPath) {
+            for (const sym of extractExportedSymbols(childPath, visited)) {
+              symbols.add(sym);
+            }
+          }
+        }
+      } else if (ts.isNamespaceExport(stmt.exportClause)) {
+        // `export * as ns from './module'`
+        symbols.add(stmt.exportClause.name.text);
+      } else if (ts.isNamedExports(stmt.exportClause)) {
+        // `export { A, B as C, type D } [from './module']`
+        for (const element of stmt.exportClause.elements) {
+          const exportedName = element.name.text;
+          if (exportedName && exportedName !== 'default') {
+            symbols.add(exportedName);
+          }
+        }
+      }
+      continue;
+    }
+
+    if (!hasExportModifier(stmt) || hasDefaultModifier(stmt)) {
+      continue;
+    }
+
+    if (
+      (ts.isFunctionDeclaration(stmt) ||
+        ts.isClassDeclaration(stmt) ||
+        ts.isInterfaceDeclaration(stmt) ||
+        ts.isTypeAliasDeclaration(stmt) ||
+        ts.isEnumDeclaration(stmt) ||
+        ts.isModuleDeclaration(stmt)) &&
+      stmt.name &&
+      ts.isIdentifier(stmt.name)
+    ) {
+      symbols.add(stmt.name.text);
+    } else if (ts.isVariableStatement(stmt)) {
+      for (const decl of stmt.declarationList.declarations) {
+        collectBindingNames(decl.name, symbols);
+      }
+    }
+  }
+
+  return symbols;
 }
 
-function main(argv = process.argv.slice(2)) {
-    if (!fs.existsSync(DEFAULT_API_DOC) || !fs.existsSync(DEFAULT_ENTRY_POINT)) {
-        console.log('Skipping verification: Required asset tracks are not generated locally yet.');
-        return 0;
-    }
+/**
+ * Checks that every symbol exported from `entryPointPath` is documented in `apiDocPath`.
+ *
+ * @param {{ entryPointPath?: string; apiDocPath?: string }} [options]
+ * @returns {{ ok: boolean; exportedSymbols: string[]; missingSymbols: string[] }}
+ */
+function checkDocCoverage(options = {}) {
+  const entryPointPath = options.entryPointPath || defaultEntryPointPath;
+  const apiDocPath = options.apiDocPath || defaultApiDocPath;
 
-    if (argv.includes('--update-baseline')) {
-        const { undocumented } = checkDocCoverage();
-        fs.writeFileSync(
-            DEFAULT_BASELINE,
-            `${JSON.stringify({ undocumented }, null, 2)}\n`,
-        );
-        console.log(`Wrote ${undocumented.length} undocumented symbol(s) to ${DEFAULT_BASELINE}`);
-        return 0;
-    }
+  if (!fs.existsSync(apiDocPath) || !fs.existsSync(entryPointPath)) {
+    return { ok: false, exportedSymbols: [], missingSymbols: [] };
+  }
 
-    console.log('🔍 Running TrustFlow SDK public surface documentation drift checks...');
-    const { failures, stale } = checkDocCoverage();
+  const docContent = fs.readFileSync(apiDocPath, 'utf8');
+  const exportedSymbols = extractExportedSymbols(entryPointPath);
 
-    for (const symbol of failures) {
-        console.error(`❌ Drift Detected: '${symbol}' is exported publicly from src/index.ts but missing from docs/API.md!`);
+  const missingSymbols = [];
+  for (const symbol of exportedSymbols) {
+    if (!symbol) continue;
+    const escaped = symbol.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const pattern = new RegExp(`(#|\\b)${escaped}\\b`);
+    if (!pattern.test(docContent)) {
+      missingSymbols.push(symbol);
     }
-    if (stale.length > 0) {
-        console.log(
-            `ℹ️ ${stale.length} baseline entr${stale.length === 1 ? 'y is' : 'ies are'} now documented or no longer exported (${stale.join(', ')}). Run "node scripts/check-doc-coverage.js --update-baseline" to prune.`,
-        );
-    }
+  }
 
-    if (failures.length > 0) {
-        console.error('📊 Documentation sync check failed. Please document missing components inside docs/API.md.');
-        return 1;
-    }
-    console.log('✅ Documentation synchronization surface check passed successfully!');
-    return 0;
+  return {
+    ok: missingSymbols.length === 0 && exportedSymbols.size > 0,
+    exportedSymbols: Array.from(exportedSymbols),
+    missingSymbols,
+  };
 }
 
 if (require.main === module) {
-    process.exitCode = main();
+  if (!fs.existsSync(defaultApiDocPath) || !fs.existsSync(defaultEntryPointPath)) {
+    console.error('❌ Required files (docs/API.md or src/index.ts) were not found.');
+    process.exit(1);
+  }
+
+  console.log('🔍 Running TrustFlow SDK public surface documentation drift checks...');
+  const result = checkDocCoverage();
+
+  for (const symbol of result.missingSymbols) {
+    console.error(
+      `❌ Drift Detected: '${symbol}' is exported publicly from src/index.ts but missing from docs/API.md!`,
+    );
+  }
+
+  if (!result.ok) {
+    console.error(
+      `📊 Documentation sync check failed (${result.missingSymbols.length} undocumented symbol(s) out of ${result.exportedSymbols.length} exported). Please document missing components inside docs/API.md.`,
+    );
+    process.exit(1);
+  }
+
+  console.log(
+    `✅ Documentation synchronization surface check passed successfully (${result.exportedSymbols.length} exported symbols verified)!`,
+  );
+  process.exit(0);
 }
 
-module.exports = { collectExports, checkDocCoverage, isDocumented, main };
+module.exports = {
+  extractExportedSymbols,
+  checkDocCoverage,
+};
