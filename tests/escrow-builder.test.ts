@@ -52,6 +52,36 @@ describe('EscrowBuilder', () => {
     expect(escrow.milestones![1]).toEqual(m2);
   });
 
+  it('rejects an invalid depositor address with VALIDATION_ERROR', () => {
+    const builder = new EscrowBuilder()
+      .setDepositor('invalid-stellar-address')
+      .setBeneficiary(BENEFICIARY)
+      .setAmount('100');
+
+    expect(() => builder.build()).toThrow(TrustFlowError);
+    try {
+      builder.build();
+    } catch (err: any) {
+      expect(err.code).toBe('VALIDATION_ERROR');
+      expect(err.field).toBe('depositor');
+    }
+  });
+
+  it('rejects an invalid beneficiary address with VALIDATION_ERROR', () => {
+    const builder = new EscrowBuilder()
+      .setDepositor(DEPOSITOR)
+      .setBeneficiary('invalid-stellar-address')
+      .setAmount('100');
+
+    expect(() => builder.build()).toThrow(TrustFlowError);
+    try {
+      builder.build();
+    } catch (err: any) {
+      expect(err.code).toBe('VALIDATION_ERROR');
+      expect(err.field).toBe('beneficiary');
+    }
+  });
+
   it('rejects an invalid arbitrator address with VALIDATION_ERROR', () => {
     const builder = new EscrowBuilder()
       .setDepositor(DEPOSITOR)
