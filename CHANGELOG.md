@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+### TrustFlow SDK safety fixes (#564, #565, #569)
+
+- Extend human-readable byte sizes through TB/PB and clamp larger exponents.
+- Support escrow funded/cancelled and dispute resolved event topic filters.
+- Preserve caller-owned AbortSignal cancellation when fetchWithTimeout has a deadline.
+- Issue #568 is already fixed on main through the bias-free nonce implementation (#352).
+
+
 ### Session revocation on wallet disconnect (#347)
 
 - Issue #347: `useWallet().disconnect()` now revokes all persisted auth state. It calls the new `clearAllSessions()`, which removes the unscoped token/address/expiry trio through the active storage adapter and sweeps every `trustflow_`-prefixed key out of `localStorage` and `sessionStorage` — covering account-scoped sessions (`trustflow_token:<scope>`) and legacy keys — so a stored JWT, refresh token, or challenge nonce can no longer outlive the connection it belonged to. The purge runs even when the wallet-level disconnect rejects, so a failing extension can no longer leave credentials behind.

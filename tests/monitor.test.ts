@@ -101,3 +101,23 @@ describe('EscrowMonitor', () => {
     });
   });
 });
+
+describe('topic filter completeness (#565)', () => {
+  const types = [
+    'escrow_created', 'escrow_funded', 'escrow_released',
+    'escrow_cancelled', 'dispute_raised', 'dispute_resolved',
+  ] as const;
+  it.each(types)('delivers matching %s events and excludes nonmatching escrow IDs', async (type) => {
+    const monitor = new EscrowMonitor();
+    const received: string[] = [];
+    monitor.addTopicFilter({ type, topicIndex: 1, value: 'allowed' });
+    monitor.on('*', (event) => received.push((event.data as { escrowId: string }).escrowId));
+    const makeEvent = (escrowId: string): ParsedTrustFlowEvent => ({
+      ...createdEvent(escrowId), type,
+      data: { escrowId, sender: 'GS', recipient: 'GR', raisedBy: 'GS', resolvedBy: 'GS' },
+    });
+    monitor.deliver([makeEvent('allowed'), makeEvent('blocked')]);
+    await Promise.resolve();
+    expect(received).toEqual(['allowed']);
+  });
+});

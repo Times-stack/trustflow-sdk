@@ -84,7 +84,7 @@ export async function withTimeout<T>(
  * bandwidth budget rather than merely being ignored.
  *
  * @param url - Request URL, forwarded to `fetch`
- * @param init - Request init, forwarded with the abort `signal` attached
+ * @param init - Request init; a caller-provided abort signal remains active alongside the deadline
  * @param timeoutMs - Deadline in milliseconds; `undefined` calls plain `fetch`
  * @param context - Operation name used in the timeout error message
  * @throws {TrustFlowError} `TIMEOUT` once `timeoutMs` elapses
@@ -108,6 +108,11 @@ export async function fetchWithTimeout(
     controller.abort();
   }, timeoutMs);
 
+  const callerSignal = init?.signal;
+  const forwardAbort = () => controller.abort(callerSignal?.reason);
+  if (callerSignal?.aborted) forwardAbort();
+  else callerSignal?.addEventListener('abort', forwardAbort, { once: true });
+
   try {
     return await fetch(url, { ...init, signal: controller.signal });
   } catch (e) {
@@ -117,5 +122,6 @@ export async function fetchWithTimeout(
     throw e;
   } finally {
     clearTimeout(timer);
+    callerSignal?.removeEventListener('abort', forwardAbort);
   }
 }

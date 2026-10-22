@@ -339,6 +339,17 @@ export class EscrowMonitor {
         if (filter.topicIndex === 2) return data.sender === filter.value;
         if (filter.topicIndex === 3) return data.recipient === filter.value;
       }
+      if ((event.type === 'escrow_funded' || event.type === 'escrow_cancelled') && 'data' in event) {
+        const data = event.data as Record<string, unknown>;
+        if (filter.topicIndex === 1) return data.escrowId === filter.value;
+        if (filter.topicIndex === 2) return data.sender === filter.value;
+        if (filter.topicIndex === 3) return data.recipient === filter.value;
+      }
+      if (event.type === 'dispute_resolved' && 'data' in event) {
+        const data = event.data as Record<string, unknown>;
+        if (filter.topicIndex === 1) return data.escrowId === filter.value;
+        if (filter.topicIndex === 2) return data.resolvedBy === filter.value;
+      }
       if (event.type === 'escrow_released' && 'data' in event) {
         const data = event.data as any;
         if (filter.topicIndex === 1) return data.escrowId === filter.value;

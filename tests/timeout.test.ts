@@ -388,3 +388,17 @@ describe('default timeout', () => {
     expect(DEFAULT_TIMEOUT_MS).toBe(10_000);
   });
 });
+
+describe('caller-supplied fetch abort (#569)', () => {
+  it('propagates caller abort while deadline is active', async () => {
+    const controller = new AbortController();
+    const fetchMock = jest.fn((_url: string, init: RequestInit) => new Promise((_resolve, reject) => {
+      init.signal?.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')));
+    }));
+    global.fetch = fetchMock as unknown as typeof fetch;
+    const pending = fetchWithTimeout('https://example.com', { signal: controller.signal }, 10000);
+    controller.abort();
+    await expect(pending).rejects.toMatchObject({ name: 'AbortError' });
+    expect(fetchMock.mock.calls[0][1].signal.aborted).toBe(true);
+  });
+});
