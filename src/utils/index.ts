@@ -19,3 +19,4 @@ export * from './dedup';
 
 export * from './crypto';
 export * from './timeout';
+export * from './jwt';

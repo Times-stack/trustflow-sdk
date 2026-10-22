@@ -5,9 +5,6 @@ import { logger } from '../utils/logger';
 import { decodeJwtExpMs } from '../utils/jwt';
 import { saveSession, loadSession, type Session } from './session';
 
-// Re-exported so the helper stays importable from its original home (#431); the
-// implementation now lives in `src/utils/jwt.ts` alongside `authenticateWithWallet`'s
-// use of the same code path.
 export { decodeJwtExpMs };
 
 /**

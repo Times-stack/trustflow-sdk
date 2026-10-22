@@ -84,61 +84,60 @@ describe('decodeJwtExpMs', () => {
     expect(decodeJwtExpMs('a.!!!.c')).toBeNull();
   });
 
-  it('decodes a base64url payload with omitted padding (RFC 4648 §5)', () => {
-    const expSeconds = 1800000000;
-    // '~' and '?' force '+' and '/' into the base64, so the url-safe variant
-    // genuinely contains '-'/'_' once normalized.
-    const json = JSON.stringify({ sub: 'GTEST', exp: expSeconds, pad: '~~~~~?????' });
-    const b64url = Buffer.from(json)
-      .toString('base64')
-      .replace(/\+/g, '-')
-      .replace(/\//g, '_')
-      .replace(/=+$/, '');
-    expect(b64url).toMatch(/[-_]/);
-    expect(decodeJwtExpMs(`e30.${b64url}.sig`)).toBe(expSeconds * 1000);
+  it('falls back to atob when global Buffer is unavailable', () => {
+    const expSeconds = 1999999999;
+    const token = fakeJwt(expSeconds);
+    const originalBuffer = globalThis.Buffer;
+    const atobSpy = jest.spyOn(globalThis, 'atob');
+
+    try {
+      delete (globalThis as { Buffer?: unknown }).Buffer;
+      expect(decodeJwtExpMs(token)).toBe(expSeconds * 1000);
+      expect(atobSpy).toHaveBeenCalledTimes(1);
+    } finally {
+      globalThis.Buffer = originalBuffer;
+      atobSpy.mockRestore();
+    }
   });
 
-  describe('without a global Buffer (browser/worker runtimes)', () => {
-    const g = globalThis as { Buffer?: typeof Buffer; atob?: typeof atob };
-    const originalBuffer = g.Buffer;
-    const originalAtob = g.atob;
+  it('decodes RFC 7519 base64url payloads (-, _, unpadded) via atob when Buffer is unavailable', () => {
+    const expSeconds = 1999999999;
+    const header = Buffer.from(JSON.stringify({ alg: 'HS256', typ: 'JWT' })).toString('base64url');
+    // 'user?>>>' and 'a/b+c?' produce '-' and '_' in base64url with stripped '=' padding
+    const payload = Buffer.from(
+      JSON.stringify({ sub: 'user?>>>', scope: 'a/b+c?', exp: expSeconds }),
+    ).toString('base64url');
+    expect(payload).toMatch(/[-_]/);
+    expect(payload.endsWith('=')).toBe(false);
+    const token = `${header}.${payload}.sig`;
 
-    afterEach(() => {
-      g.Buffer = originalBuffer;
-      g.atob = originalAtob;
-    });
+    const originalBuffer = globalThis.Buffer;
+    const atobSpy = jest.spyOn(globalThis, 'atob');
 
-    it('falls back to atob and still returns the expiry', () => {
-      const expSeconds = Math.floor(Date.now() / 1000) + 3600;
-      const header = btoa('{"alg":"HS256"}');
-      const payload = btoa(JSON.stringify({ sub: 'GTEST', exp: expSeconds }));
-      delete g.Buffer;
+    try {
+      delete (globalThis as { Buffer?: unknown }).Buffer;
+      expect(decodeJwtExpMs(token)).toBe(expSeconds * 1000);
+      expect(atobSpy).toHaveBeenCalledTimes(1);
+    } finally {
+      globalThis.Buffer = originalBuffer;
+      atobSpy.mockRestore();
+    }
+  });
 
-      expect(decodeJwtExpMs(`${header}.${payload}.sig`)).toBe(expSeconds * 1000);
-    });
+  it('returns null when neither Buffer nor atob is available', () => {
+    const expSeconds = 1999999999;
+    const token = fakeJwt(expSeconds);
+    const originalBuffer = globalThis.Buffer;
+    const originalAtob = globalThis.atob;
 
-    it('normalizes base64url before calling atob, which rejects - and _', () => {
-      const expSeconds = 1800000000;
-      const json = JSON.stringify({ exp: expSeconds, pad: '~~~~~?????' });
-      const b64url = Buffer.from(json)
-        .toString('base64')
-        .replace(/\+/g, '-')
-        .replace(/\//g, '_')
-        .replace(/=+$/, '');
-      delete g.Buffer;
-
-      expect(decodeJwtExpMs(`e30.${b64url}.sig`)).toBe(expSeconds * 1000);
-    });
-
-    it('returns null when neither Buffer nor atob exists', () => {
-      const expSeconds = Math.floor(Date.now() / 1000) + 3600;
-      const header = btoa('{"alg":"HS256"}');
-      const payload = btoa(JSON.stringify({ exp: expSeconds }));
-      delete g.Buffer;
-      delete g.atob;
-
-      expect(decodeJwtExpMs(`${header}.${payload}.sig`)).toBeNull();
-    });
+    try {
+      delete (globalThis as { Buffer?: unknown }).Buffer;
+      delete (globalThis as { atob?: unknown }).atob;
+      expect(decodeJwtExpMs(token)).toBeNull();
+    } finally {
+      globalThis.Buffer = originalBuffer;
+      globalThis.atob = originalAtob;
+    }
   });
 });
 
