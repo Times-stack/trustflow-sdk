@@ -152,20 +152,33 @@ describe('TrustFlowClient', () => {
       expect(loadAccount).toHaveBeenCalledTimes(2);
     });
 
-    it('does not reuse a cached balance from the previous network after switchNetwork', async () => {
+    it('clears cached balances when switchNetwork is called', async () => {
       const client = new TrustFlowClient({
         contractId: mockContractId,
         network: 'TESTNET',
         balanceCache: { ttlMs: 60_000 },
       });
-      mockBalanceLookup(client, '42.0000000');
-      await client.getBalance(address);
+      const testnetLoadAccount = mockBalanceLookup(client, '42.0000000');
 
-      client.switchNetwork('LOCALNET');
-      const loadAccount = mockBalanceLookup(client, '7.0000000');
+      await expect(client.getBalance(address)).resolves.toBe('42.0000000');
+      await expect(client.getBalance(address)).resolves.toBe('42.0000000');
+      expect(testnetLoadAccount).toHaveBeenCalledTimes(1);
 
-      await expect(client.getBalance(address)).resolves.toBe('7.0000000');
-      expect(loadAccount).toHaveBeenCalledTimes(1);
+      client.switchNetwork('MAINNET');
+      const mainnetLoadAccount = mockBalanceLookup(client, '99.5000000');
+
+      await expect(client.getBalance(address)).resolves.toBe('99.5000000');
+      expect(mainnetLoadAccount).toHaveBeenCalledTimes(1);
+    });
+
+    it('switches networks cleanly when balanceCache is not configured', () => {
+      const client = new TrustFlowClient({
+        contractId: mockContractId,
+        network: 'TESTNET',
+      });
+
+      expect(() => client.switchNetwork('MAINNET')).not.toThrow();
+      expect(client.network).toBe('MAINNET');
     });
   });
 

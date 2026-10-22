@@ -464,7 +464,10 @@ export class TrustFlowClient {
     return this._connected;
   }
 
-  /** Switches this client to a preset network and invalidates its connections. */
+  /**
+   * Switches this client to a preset network, invalidating its connections
+   * and clearing any cached balances.
+   */
   switchNetwork(network: Network): void {
     const config = NETWORK_CONFIGS[network];
     if (!config) {

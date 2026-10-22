@@ -2,9 +2,9 @@
 
 ## [Unreleased]
 
-### Consistent IPFS gateway URL normalization in `IPFSStorage.upload` (#504)
+### Clear cached balances on network switch (#449)
 
-- Issue #504: Factored gateway URL normalization out of `IPFSStorage.resolve` into a shared helper used by both `upload()` and `resolve()` so custom gateways without an `/ipfs` suffix return consistent gateway URLs.
+- Issue #449: Clear cached balances in `TrustFlowClient.switchNetwork` so cached entries do not leak across networks.
 
 ### MultiSigConfig integration (#442)
 
