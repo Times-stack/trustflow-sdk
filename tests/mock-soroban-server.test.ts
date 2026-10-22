@@ -55,6 +55,45 @@ describe('Offline Mock Soroban RPC Server Provider (Issue #381)', () => {
       expect((simulation.returnValue as any).amount).toBe(25_000_000n);
     });
 
+    it('does not return another escrow when the queried id is not configured (Issue #609)', async () => {
+      const mockRpc = createMockSorobanServer({
+        escrows: {
+          'escrow-42': buildMockEscrow({ id: 'escrow-42', amount: 25_000_000n, status: 'ACTIVE' }),
+        },
+      });
+
+      const client = new TrustFlowClient({
+        contractId,
+        rpcServer: mockRpc as any,
+        horizonServer: createMockHorizonServer() as any,
+      });
+
+      const tx = buildTestTx('get_escrow', 'escrow-DOES-NOT-EXIST');
+      const simulation = await simulateTransaction(client.getSorobanServer(), tx);
+
+      expect(simulation.success).toBe(true);
+      expect((simulation.returnValue as any)?.id).toBeUndefined();
+    });
+
+    it('does not fall back to a configured escrow for a non-escrow getter with an unknown id (Issue #609)', async () => {
+      const mockRpc = createMockSorobanServer({
+        escrows: {
+          'escrow-42': buildMockEscrow({ id: 'escrow-42', amount: 25_000_000n, status: 'ACTIVE' }),
+        },
+      });
+
+      const client = new TrustFlowClient({
+        contractId,
+        rpcServer: mockRpc as any,
+        horizonServer: createMockHorizonServer() as any,
+      });
+
+      const tx = buildTestTx('get_dispute', 'dispute-unknown');
+      const simulation = await simulateTransaction(client.getSorobanServer(), tx);
+
+      expect((simulation.returnValue as any)?.id).toBeUndefined();
+    });
+
     it('supports custom method handlers for dynamic responses based on arguments', async () => {
       const mockRpc = createMockSorobanServer({
         methodHandlers: {
