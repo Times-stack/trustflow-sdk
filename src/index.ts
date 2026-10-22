@@ -35,14 +35,7 @@ export * from './utils/transient';
 export * from './utils/retry';
 export * from './utils/interceptors';
 export * from './tx-pipeline';
-export type {
-  RawContractEvent,
-  ParsedEvent,
-  EscrowCreatedData,
-  EscrowReleasedData,
-  DisputeRaisedData,
-} from './events';
-export * from './contract';
+export * from './wallet/mock';
 export { TrustFlowClient } from './client';
 export type { GetBalanceOptions } from './client';
 export * from './errors';
@@ -59,8 +52,11 @@ export {
   CreateEscrowSchema,
   ReleaseEscrowSchema,
   DisputeEscrowSchema,
+  ClaimEscrowSchema,
+  FundEscrowSchema,
+  VoteSchema,
   ClientConfigSchema,
   CidSchema,
   parseRpcResponse,
 } from './schemas';
-export type { CreateEscrowInput, ReleaseEscrowInput, DisputeEscrowInput } from './schemas';
+export type { CreateEscrowInput, ReleaseEscrowInput, DisputeEscrowInput, ClaimEscrowInput, FundEscrowInput, VoteInput } from './schemas';
