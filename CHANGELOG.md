@@ -2,7 +2,11 @@
 
 ## [Unreleased]
 
-### Clear cached balances on network switch (#449)
+### formatBytes units above GB (#564)
+
+- Issue #564: `formatBytes` now supports `TB` and `PB` and clamps the unit index to the bounds of the `sizes` array, so sizes of 1 TiB or more no longer render as `"1 undefined"`. Formatting for `Bytes`/`KB`/`MB`/`GB` is unchanged.
+
+### Session revocation on wallet disconnect (#347)
 
 - Issue #449: Clear cached balances in `TrustFlowClient.switchNetwork` so cached entries do not leak across networks.
 
