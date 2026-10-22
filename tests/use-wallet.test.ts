@@ -4,6 +4,7 @@ import { useWallet } from '../src/hooks/useWallet';
 import { connectWallet, disconnectWallet } from '../src/wallet/connect';
 import { saveSession, loadSession } from '../src/auth/session';
 import type { WalletConnection } from '../src/wallet/types';
+import { SessionManager, saveSession, loadSession, isSessionExpired } from '../src/auth/session';
 
 jest.mock('../src/wallet/connect', () => ({
   connectWallet: jest.fn(),
@@ -238,5 +239,94 @@ describe('useWallet', () => {
 
     expect(result.current.isRejected).toBe(false);
     expect(result.current.error).toBeNull();
+  });
+
+  it('purges cached auth sessions, refresh tokens, and nonces from storage on disconnect (#347)', async () => {
+    mockConnect.mockResolvedValueOnce(connection);
+    mockDisconnect.mockResolvedValueOnce(undefined);
+    localStorage.clear();
+    sessionStorage.clear();
+
+    const clearSpy = jest.spyOn(SessionManager, 'clear');
+    const { result } = renderHook(() => useWallet());
+
+    await act(async () => {
+      await result.current.connect();
+    });
+
+    // Populate unscoped and account-scoped sessions plus refresh tokens and nonces in both storages
+    saveSession('jwt-access-token', connection.publicKey);
+    saveSession('scoped-jwt-token', connection.publicKey, undefined, connection.publicKey);
+    localStorage.setItem('trustflow_refresh_token', 'refresh-token-1');
+    localStorage.setItem(`trustflow_refresh_token:${connection.publicKey}`, 'refresh-token-scoped');
+    localStorage.setItem('trustflow_nonce', 'challenge-nonce-1');
+    sessionStorage.setItem('trustflow_token', 'session-jwt-token');
+    sessionStorage.setItem('trustflow_refresh_token', 'session-refresh-token');
+    sessionStorage.setItem('trustflow_nonce', 'session-nonce');
+
+    expect(loadSession()?.token).toBe('jwt-access-token');
+    expect(loadSession(connection.publicKey)?.token).toBe('scoped-jwt-token');
+    expect(isSessionExpired()).toBe(false);
+
+    await act(async () => {
+      await result.current.disconnect();
+    });
+
+    expect(clearSpy).toHaveBeenCalledWith(connection.publicKey);
+    expect(loadSession()).toBeNull();
+    expect(loadSession(connection.publicKey)).toBeNull();
+    expect(isSessionExpired()).toBe(true);
+    expect(localStorage.getItem('trustflow_token')).toBeNull();
+    expect(localStorage.getItem('trustflow_address')).toBeNull();
+    expect(localStorage.getItem('trustflow_expires_at')).toBeNull();
+    expect(localStorage.getItem('trustflow_refresh_token')).toBeNull();
+    expect(localStorage.getItem(`trustflow_refresh_token:${connection.publicKey}`)).toBeNull();
+    expect(localStorage.getItem('trustflow_nonce')).toBeNull();
+    expect(sessionStorage.getItem('trustflow_token')).toBeNull();
+    expect(sessionStorage.getItem('trustflow_refresh_token')).toBeNull();
+    expect(sessionStorage.getItem('trustflow_nonce')).toBeNull();
+    expect(localStorage.length).toBe(0);
+    expect(sessionStorage.length).toBe(0);
+
+    clearSpy.mockRestore();
+  });
+
+  it('completes disconnect and clears remaining storage even if localStorage throws SecurityError (#347)', async () => {
+    mockConnect.mockResolvedValueOnce(connection);
+    mockDisconnect.mockResolvedValueOnce(undefined);
+    localStorage.clear();
+    sessionStorage.clear();
+
+    const { result } = renderHook(() => useWallet());
+    await act(async () => {
+      await result.current.connect();
+    });
+
+    sessionStorage.setItem('trustflow_token', 'session-jwt-token');
+    sessionStorage.setItem('trustflow_nonce', 'session-nonce');
+
+    const origRemoveItem = Storage.prototype.removeItem;
+    const removeSpy = jest.spyOn(Storage.prototype, 'removeItem').mockImplementation(function (
+      this: Storage,
+      key: string,
+    ) {
+      if (this === localStorage) {
+        throw new Error('SecurityError: The operation is insecure.');
+      }
+      origRemoveItem.call(this, key);
+    });
+
+    try {
+      await act(async () => {
+        await result.current.disconnect();
+      });
+
+      expect(result.current.wallet).toBeNull();
+      expect(result.current.isConnected).toBe(false);
+      expect(sessionStorage.getItem('trustflow_token')).toBeNull();
+      expect(sessionStorage.getItem('trustflow_nonce')).toBeNull();
+    } finally {
+      removeSpy.mockRestore();
+    }
   });
 });

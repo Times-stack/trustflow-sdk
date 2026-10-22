@@ -2,7 +2,7 @@ import { useState, useCallback, useRef } from 'react';
 import type { WalletConnection, WalletType } from '../wallet/types';
 import { isWalletRejection } from '../wallet/types';
 import { connectWallet, disconnectWallet } from '../wallet/connect';
-import { clearAllSessions } from '../auth/session';
+import { SessionManager } from '../auth/session';
 
 /**
  * React hook for managing wallet connection lifecycle, handling rejections gracefully,
@@ -14,6 +14,7 @@ export function useWallet() {
   const [error, setError] = useState<string | null>(null);
   const [isRejected, setIsRejected] = useState(false);
   const lastTypeRef = useRef<WalletType>('freighter');
+  const walletRef = useRef<WalletConnection | null>(null);
 
   const reset = useCallback(() => {
     setError(null);
@@ -27,6 +28,7 @@ export function useWallet() {
     setIsRejected(false);
     try {
       const w = await connectWallet(type);
+      walletRef.current = w;
       setWallet(w);
       setIsRejected(false);
       return w;
@@ -47,14 +49,12 @@ export function useWallet() {
   }, [connect]);
 
   const disconnect = useCallback(async () => {
+    const activeAddress = walletRef.current?.publicKey;
     try {
       await disconnectWallet();
     } finally {
-      // Revoke cached auth state even when the wallet-level disconnect
-      // rejects: stored JWTs, refresh tokens, and challenge nonces must not
-      // outlive the connection they belonged to (#347), so a later
-      // reconnect has to re-sign the challenge instead of reusing them.
-      clearAllSessions();
+      SessionManager.clear(activeAddress);
+      walletRef.current = null;
       setWallet(null);
       setError(null);
       setIsRejected(false);
