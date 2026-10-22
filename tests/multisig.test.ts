@@ -984,6 +984,201 @@ describe('MultiSigEscrowClient against the real client', () => {
         error,
       });
     });
+
+    it('rejects a snapshot containing a non-Stellar-address in signers (#434)', () => {
+      const client = makeClient();
+      const operationId = initOperation(client);
+      const snapshot = client.exportState(operationId) as MultiSigStateSnapshot;
+      snapshot.signers = [signers.a.publicKey(), 'not-a-stellar-address'];
+
+      const result = client.importState(snapshot);
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error).toContain('snapshot.signers[1] is not a valid Stellar address');
+      }
+    });
+
+    it('rejects a snapshot with malformed collectedSignatures entry shapes (#434)', () => {
+      const client = makeClient();
+      const operationId = initOperation(client);
+      const baseSnapshot = client.exportState(operationId) as MultiSigStateSnapshot;
+
+      expect(
+        client.importState({
+          ...baseSnapshot,
+          collectedSignatures: [null as any],
+        }),
+      ).toEqual({
+        ok: false,
+        error: 'snapshot.collectedSignatures[0] must be an object',
+      });
+
+      expect(
+        client.importState({
+          ...baseSnapshot,
+          collectedSignatures: [
+            {
+              signerAddress: '',
+              signedXdr: signedXdrFor(signers.a),
+              addedAt: Date.now(),
+              verified: true,
+            },
+          ],
+        }),
+      ).toEqual({
+        ok: false,
+        error: 'snapshot.collectedSignatures[0].signerAddress must be a non-empty string',
+      });
+
+      expect(
+        client.importState({
+          ...baseSnapshot,
+          collectedSignatures: [
+            {
+              signerAddress: signers.outsider.publicKey(),
+              signedXdr: signedXdrFor(signers.outsider),
+              addedAt: Date.now(),
+              verified: true,
+            },
+          ],
+        }),
+      ).toEqual({
+        ok: false,
+        error: `snapshot.collectedSignatures[0].signerAddress (${signers.outsider.publicKey()}) is not an authorised signer for this operation`,
+      });
+
+      expect(
+        client.importState({
+          ...baseSnapshot,
+          collectedSignatures: [
+            {
+              signerAddress: signers.a.publicKey(),
+              signedXdr: '',
+              addedAt: Date.now(),
+              verified: true,
+            },
+          ],
+        }),
+      ).toEqual({
+        ok: false,
+        error: 'snapshot.collectedSignatures[0].signedXdr must be a non-empty string',
+      });
+
+      expect(
+        client.importState({
+          ...baseSnapshot,
+          collectedSignatures: [
+            {
+              signerAddress: signers.a.publicKey(),
+              signedXdr: signedXdrFor(signers.a),
+              addedAt: Number.NaN,
+              verified: true,
+            },
+          ],
+        }),
+      ).toEqual({
+        ok: false,
+        error: 'snapshot.collectedSignatures[0].addedAt must be a finite number',
+      });
+    });
+
+    it('rejects a snapshot with a forged verified: true entry whose signedXdr lacks a valid signature (#434)', async () => {
+      const source = makeClient();
+      const operationId = initOperation(source, { threshold: 1 });
+      const snapshot = source.exportState(operationId) as MultiSigStateSnapshot;
+
+      // Forge a SignatureEntry claiming signer A signed and verified, but passing
+      // either an unsigned envelope or an envelope signed by signer B.
+      const forgedWithUnsigned: MultiSigStateSnapshot = {
+        ...snapshot,
+        status: 'ready',
+        collectedSignatures: [
+          {
+            signerAddress: signers.a.publicKey(),
+            signedXdr: snapshot.unsignedXdr,
+            addedAt: Date.now(),
+            verified: true,
+            verifiedAt: Date.now(),
+          },
+        ],
+      };
+
+      const target = makeClient();
+      const resUnsigned = target.importState(forgedWithUnsigned);
+      expect(resUnsigned.ok).toBe(false);
+      if (!resUnsigned.ok) {
+        expect(resUnsigned.error).toContain('snapshot.collectedSignatures[0] verification failed');
+      }
+
+      const forgedWithWrongSigner: MultiSigStateSnapshot = {
+        ...snapshot,
+        status: 'ready',
+        collectedSignatures: [
+          {
+            signerAddress: signers.a.publicKey(),
+            signedXdr: signedXdrFor(signers.b),
+            addedAt: Date.now(),
+            verified: true,
+            verifiedAt: Date.now(),
+          },
+        ],
+      };
+
+      const resWrongSigner = target.importState(forgedWithWrongSigner);
+      expect(resWrongSigner.ok).toBe(false);
+      if (!resWrongSigner.ok) {
+        expect(resWrongSigner.error).toContain(
+          'snapshot.collectedSignatures[0] verification failed',
+        );
+      }
+
+      // Operation was never admitted, so submitWhenReady cannot be satisfied.
+      const submitRes = await target.submitWhenReady(operationId, HORIZON_URL);
+      expect(submitRes.ok).toBe(false);
+      expect(submitTransactionMock).not.toHaveBeenCalled();
+    });
+
+    it('rejects empty or duplicate signers and duplicate collectedSignatures entries (#434)', () => {
+      const client = makeClient();
+      const operationId = initOperation(client);
+      const baseSnapshot = client.exportState(operationId) as MultiSigStateSnapshot;
+
+      expect(
+        client.importState({
+          ...baseSnapshot,
+          signers: [],
+        }),
+      ).toEqual({
+        ok: false,
+        error: 'snapshot.signers must contain at least one signer',
+      });
+
+      expect(
+        client.importState({
+          ...baseSnapshot,
+          signers: [signers.a.publicKey(), signers.a.publicKey()],
+        }),
+      ).toEqual({
+        ok: false,
+        error: 'Duplicate signer addresses are not allowed in snapshot.signers',
+      });
+
+      const validEntry = {
+        signerAddress: signers.a.publicKey(),
+        signedXdr: signedXdrFor(signers.a),
+        addedAt: Date.now(),
+        verified: true,
+      };
+      expect(
+        client.importState({
+          ...baseSnapshot,
+          collectedSignatures: [validEntry, { ...validEntry }],
+        }),
+      ).toEqual({
+        ok: false,
+        error: `snapshot.collectedSignatures[1] contains duplicate signature from ${signers.a.publicKey()}`,
+      });
+    });
   });
 
   describe('MultiSigConfig integration (#442)', () => {

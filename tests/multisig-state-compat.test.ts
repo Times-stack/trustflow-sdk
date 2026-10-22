@@ -6,14 +6,14 @@ import {
   Networks,
   Operation,
   TransactionBuilder,
-} from "@stellar/stellar-sdk";
-import { MultiSigEscrowClient } from "../src/escrow/multisig";
+} from '@stellar/stellar-sdk';
+import { MultiSigEscrowClient } from '../src/escrow/multisig';
 
 const NETWORK = Networks.TESTNET;
 const testKeypair = Keypair.fromRawEd25519Seed(Buffer.alloc(32, 1));
 const TEST_SIGNER = testKeypair.publicKey();
 
-const tx = new TransactionBuilder(new Account(TEST_SIGNER, "1"), {
+const tx = new TransactionBuilder(new Account(TEST_SIGNER, '1'), {
   fee: BASE_FEE,
   networkPassphrase: NETWORK,
 })
@@ -21,13 +21,14 @@ const tx = new TransactionBuilder(new Account(TEST_SIGNER, "1"), {
     Operation.payment({
       destination: Keypair.random().publicKey(),
       asset: Asset.native(),
-      amount: "10",
+      amount: '10',
     }),
   )
   .setTimeout(30)
   .build();
-const XDR = tx.toEnvelope().toXDR("base64");
-
+const XDR = tx.toEnvelope().toXDR('base64');
+tx.sign(testKeypair);
+const SIGNED_XDR = tx.toEnvelope().toXDR('base64');
 
 describe('MultiSigEscrowClient state import/export backward compatibility', () => {
   function makeClient(): MultiSigEscrowClient {
@@ -70,9 +71,7 @@ describe('MultiSigEscrowClient state import/export backward compatibility', () =
       expect(status.data.signaturesCollected).toBe(0);
       expect(status.data.isReady).toBe(false);
       expect(status.data.signersSigned).toHaveLength(0);
-      expect(status.data.signersRemaining).toContain(
-        TEST_SIGNER,
-      );
+      expect(status.data.signersRemaining).toContain(TEST_SIGNER);
     }
   });
 
@@ -89,7 +88,7 @@ describe('MultiSigEscrowClient state import/export backward compatibility', () =
       collectedSignatures: [
         {
           signerAddress: TEST_SIGNER,
-          signedXdr: XDR,
+          signedXdr: SIGNED_XDR,
           addedAt: Date.now() - 1000,
           verified: true,
           verifiedAt: Date.now() - 500,
@@ -109,9 +108,9 @@ describe('MultiSigEscrowClient state import/export backward compatibility', () =
     const status = client.getMultiSigStatus('msig-test-456');
     expect(status.ok).toBe(true);
     if (status.ok) {
-      expect(status.data.signaturesCollected).toBe(0);
-      expect(status.data.isReady).toBe(false);
-      expect(status.data.signersSigned).toHaveLength(0);
+      expect(status.data.signaturesCollected).toBe(1);
+      expect(status.data.isReady).toBe(true);
+      expect(status.data.signersSigned).toContain(TEST_SIGNER);
     }
   });
 
