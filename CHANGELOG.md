@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Single CID validator (#562)
+
+- Issue #562: `isValidCID`, `isValidCIDv0`, `isValidCIDv1`, `assertValidCID` and `getCIDVersion` in `src/utils/validation.ts` now delegate to the decode-based validator in `src/storage/cid.ts`, so `isValidCid`/`isValidCID` always agree. Previously the regex versions rejected valid CIDv1 strings with multicodecs other than dag-pb, dag-cbor, raw and dag-json.
+- Removed the misleading `CID_V1_RE` and `CID_RE` regex exports. `CID_V0_RE` remains as a deprecated alias of `CID_V0_REGEX`.
+
 ### Duplicate error code cleanup (#432)
 
 - Issue #432: Removed the duplicate `INVALID_CONTRACT_CALL` member from `TrustFlowErrorCode` and enabled `@typescript-eslint/no-duplicate-type-constituents` in the default ESLint config.
