@@ -143,15 +143,19 @@ export function parseAmount(xlm: string | number, decimals = 7): bigint {
 }
 
 /**
- * Formats an amount in stroops to a human-readable XLM string.
+ * Formats an amount in stroops as a plain decimal XLM string.
  * Alias for {@link stroopsToXLM} for semantic clarity.
  *
+ * The result is a numeric string only: it carries no unit label, so append
+ * `' XLM'` yourself if you want one.
+ *
  * @param stroops - Amount in stroops
- * @returns Formatted XLM string
+ * @returns Decimal XLM amount with up to 7 decimal places, trailing zeros removed
  *
  * @example
  * ```ts
- * formatAmount(10_000_000n); // '1 XLM'
+ * formatAmount(10_000_000n); // '1'
+ * formatAmount(1_500_000n);  // '0.15'
  * ```
  */
 export function formatAmount(stroops: bigint | number | string): string {
