@@ -5,6 +5,7 @@ import {
   Transaction,
   TransactionBuilder,
   rpc,
+  xdr,
 } from '@stellar/stellar-sdk';
 import type { TrustFlowClient } from '../client';
 import type { AccountContext } from '../accounts/types';
@@ -777,10 +778,29 @@ export class TransactionPipeline {
       // If we successfully reloaded, use the fresh sequence for the fee-bump's inner transaction.
       // The original transaction's absolute timebounds cannot be reused here — `setTimeout`
       // takes relative seconds — so the rebuilt retry envelope gets a fresh 30s window.
+      //
+      // A Soroban transaction's `fee` is the inclusive fee: the base fee plus the resource fee
+      // carried in its `ext` data. `TransactionBuilder.build()` adds the resource fee back on
+      // top of `fee` whenever Soroban data is set, so carry that data over and subtract the
+      // resource fee from the base fee — otherwise the rebuilt transaction would have no
+      // resource footprint at all (ext = 0) and would be rejected.
+      const ext = prepared.data.toEnvelope().v1().tx().ext();
+      const sorobanData = ext.switch() === 1 ? (ext.value() as xdr.SorobanTransactionData) : null;
+      const operations = prepared.data.toEnvelope().v1().tx().operations();
+      const resourceFee = sorobanData ? BigInt(sorobanData.resourceFee().toString()) : 0n;
+      const inclusiveBaseFee = BigInt(prepared.data.fee) - resourceFee;
+      const perOperationFee =
+        operations.length > 0 && inclusiveBaseFee > 0n
+          ? inclusiveBaseFee / BigInt(operations.length)
+          : BigInt(BASE_FEE);
+
       const freshTx = new TransactionBuilder(reloaded.data, {
-        fee: prepared.data.fee,
+        fee: perOperationFee.toString(),
         networkPassphrase: this.client.getNetworkPassphrase(),
       });
+      if (sorobanData) {
+        freshTx.setSorobanData(sorobanData);
+      }
 
       const timeBounds = prepared.data.timeBounds;
       if (timeBounds) {
@@ -789,7 +809,7 @@ export class TransactionPipeline {
         freshTx.setTimeout(30);
       }
 
-      for (const op of prepared.data.toEnvelope().v1().tx().operations()) {
+      for (const op of operations) {
         freshTx.addOperation(op);
       }
       if (prepared.data.memo) {

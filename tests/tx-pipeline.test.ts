@@ -918,6 +918,48 @@ describe('TransactionPipeline.run failure paths', () => {
     expect(sendSpy).toHaveBeenCalledTimes(1);
   });
 
+  it('keeps the Soroban resource data and fee on the fee-bumped inner transaction after a sequence reload (#561)', async () => {
+    const source = Keypair.random();
+    jest
+      .spyOn(rpc.Server.prototype, 'getAccount')
+      .mockResolvedValueOnce(new Account(source.publicKey(), '100'))
+      .mockResolvedValueOnce(new Account(source.publicKey(), '200'));
+    jest.spyOn(rpc.Server.prototype, 'simulateTransaction').mockResolvedValue(simSuccess('500'));
+    const sendSpy = jest
+      .spyOn(rpc.Server.prototype, 'sendTransaction')
+      .mockResolvedValueOnce(sendResult('TRY_AGAIN_LATER'))
+      .mockResolvedValueOnce(sendResult('PENDING', 'bumped'));
+    jest.spyOn(rpc.Server.prototype, 'getTransaction').mockResolvedValue({
+      status: rpc.Api.GetTransactionStatus.SUCCESS,
+      ledger: 9,
+    } as unknown as rpc.Api.GetTransactionResponse);
+
+    const result = await new TransactionPipeline(makeClient()).run(
+      runParams(source, { feeBump: { feeSource: Keypair.random(), baseFee: '5000' } }),
+    );
+
+    expect(result.ok).toBe(true);
+    const original = sendSpy.mock.calls[0][0] as Transaction;
+    const bumped = sendSpy.mock.calls[1][0] as FeeBumpTransaction;
+    const inner = bumped.innerTransaction;
+
+    // The reload path ran: the inner transaction uses the fresh sequence.
+    expect(inner.sequence).toBe('201');
+
+    // Soroban data survived: ext is arm 1 (not Void) with the same resource fee.
+    const originalExt = original.toEnvelope().v1().tx().ext();
+    const innerExt = inner.toEnvelope().v1().tx().ext();
+    expect(originalExt.switch()).toBe(1);
+    expect(innerExt.switch()).toBe(1);
+    const originalData = originalExt.value() as xdr.SorobanTransactionData;
+    const innerData = innerExt.value() as xdr.SorobanTransactionData;
+    expect(innerData.resourceFee().toString()).toBe(originalData.resourceFee().toString());
+    expect(innerData.toXDR('base64')).toBe(originalData.toXDR('base64'));
+
+    // The inclusive fee is unchanged: base fee plus resource fee, not double-counted.
+    expect(inner.fee).toBe(original.fee);
+  });
+
   it('returns the original submission error when the fee-bump envelope cannot be built', async () => {
     const source = Keypair.random();
     mockAssembleAndPrepare(source);
