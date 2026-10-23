@@ -1,18 +1,18 @@
 import { TrustFlowError } from '../errors';
 import { toBaseUnits } from './format';
+import { CID_V0_REGEX, assertValidCid, getCidVersion, isValidCid } from '../storage/cid';
 
 export const STELLAR_ADDRESS_RE = /^G[A-Z2-7]{55}$/;
 export const CONTRACT_ID_RE = /^C[A-Z2-7]{55}$/;
 const XLM_AMOUNT_RE = /^\d+(\.\d{1,7})?$/;
 
-/** CIDv0 regex (base58btc, starts with Qm, 46 chars) */
-export const CID_V0_RE = /^Qm[1-9A-HJ-NP-Za-km-z]{44}$/;
-
-/** CIDv1 regex (multibase base32, starts with bafy/bafk/bafi/bafz, 59 chars) */
-export const CID_V1_RE = /^b(afy|afk|afi|afz)[a-z2-7]{55}$/;
-
-/** Combined CID regex (v0 or v1) */
-export const CID_RE = new RegExp(`^(?:${CID_V0_RE.source}|${CID_V1_RE.source})$`);
+/**
+ * CIDv0 regex (base58btc, starts with Qm, 46 chars).
+ *
+ * @deprecated Alias of `CID_V0_REGEX` from the storage module. CID validation
+ * lives in `src/storage/cid.ts`; use `isValidCid` rather than matching regexes.
+ */
+export const CID_V0_RE = CID_V0_REGEX;
 
 export function isValidStellarAddress(value: string): boolean {
   return STELLAR_ADDRESS_RE.test(value);
@@ -89,7 +89,10 @@ export function sanitizeString(value: string, maxLength = 256): string {
 
 /**
  * Validates a CID (Content Identifier) string.
- * Supports both CIDv0 (base58btc, starts with Qm) and CIDv1 (multibase base32, starts with bafy/bafk/bafi/bafz).
+ *
+ * Delegates to {@link isValidCid} in `src/storage/cid.ts`, the single CID
+ * validator: it decodes the CID and checks its structure, so any multicodec is
+ * accepted. `isValidCID` and `isValidCid` always agree.
  *
  * @param value - CID string to validate
  * @returns true if valid CID, false otherwise
@@ -102,7 +105,7 @@ export function sanitizeString(value: string, maxLength = 256): string {
  * ```
  */
 export function isValidCID(value: string): boolean {
-  return typeof value === 'string' && CID_RE.test(value);
+  return isValidCid(value);
 }
 
 /**
@@ -112,17 +115,18 @@ export function isValidCID(value: string): boolean {
  * @returns true if valid CIDv0, false otherwise
  */
 export function isValidCIDv0(value: string): boolean {
-  return typeof value === 'string' && CID_V0_RE.test(value);
+  return getCidVersion(value) === 0;
 }
 
 /**
- * Validates a CIDv1 string (multibase base32 encoded, starts with bafy/bafk/bafi/bafz).
+ * Validates a CIDv1 string (any multibase and multicodec accepted by
+ * {@link isValidCid}).
  *
  * @param value - CIDv1 string to validate
  * @returns true if valid CIDv1, false otherwise
  */
 export function isValidCIDv1(value: string): boolean {
-  return typeof value === 'string' && CID_V1_RE.test(value);
+  return getCidVersion(value) === 1;
 }
 
 /**
@@ -133,9 +137,7 @@ export function isValidCIDv1(value: string): boolean {
  * @throws {TrustFlowError} If the value is not a valid CID
  */
 export function assertValidCID(value: string, field = 'cid'): void {
-  if (!isValidCID(value)) {
-    throw TrustFlowError.validation(field, `Invalid CID for "${field}": ${value}`);
-  }
+  assertValidCid(value, field);
 }
 
 /**
@@ -145,7 +147,5 @@ export function assertValidCID(value: string, field = 'cid'): void {
  * @returns 0 for CIDv0, 1 for CIDv1, null if invalid
  */
 export function getCIDVersion(value: string): 0 | 1 | null {
-  if (CID_V0_RE.test(value)) return 0;
-  if (CID_V1_RE.test(value)) return 1;
-  return null;
+  return getCidVersion(value);
 }
