@@ -24,6 +24,12 @@ const CID_V0 = 'QmYwAPJzv5CZsnA625s3Xf2nemtYgPpHdWEz79ojWnPbdG';
 const CID_V1 = 'bafybeigdyrzt5sfp7udm7hu76uh7y26nf3efuylqabf3oclgtqy55fbzdi';
 
 describe('amount utilities', () => {
+  it('formatAmount returns a plain numeric string matching its JSDoc examples', () => {
+    expect(formatAmount(10_000_000n)).toBe('1');
+    expect(formatAmount(1_500_000n)).toBe('0.15');
+    expect(formatAmount(10_000_000n)).not.toContain('XLM');
+  });
+
   it('formatAmount aliases stroopsToXLM', () => {
     expect(formatAmount(10_000_000n)).toBe('1');
     expect(formatAmount(1_500_000n)).toBe(stroopsToXLM(1_500_000n));
